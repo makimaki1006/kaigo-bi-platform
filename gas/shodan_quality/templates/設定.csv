@@ -1,0 +1,8 @@
+キー,値
+ZOOM_ACCOUNT_ID,1vtP4UNHQTC2_7cVjR33pg
+ZOOM_CLIENT_ID,5n5XGEeVSXKkHbEkgKbDQ
+ZOOM_CLIENT_SECRET,8fxz9NgK9Svp81LBNYzHAH5Ysb59xSq5
+GEMINI_API_KEY,AIzaSyBf-ZDltXBKcMHf9KFGnrGSyaK_stF34vg
+SLACK_WEBHOOK_URL,https://hooks.slack.com/services/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
+MODEL_TRANSCRIPT,（お手本テキストを貼り付け - data/output/model_transcript.txt）
+TEST_EMAIL,s_hattori@f-a-c.co.jp

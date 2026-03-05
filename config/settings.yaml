@@ -1,0 +1,41 @@
+# アプリケーション設定
+
+app:
+  name: "Salesforce List Manager"
+  version: "1.0.0"
+  description: "SalesforceデータとスクレイピングデータのBelonging突合・同期システム"
+
+salesforce:
+  api_version: "59.0"
+  batch_size: 200
+  retry_count: 3
+  retry_delay_seconds: 5
+
+scraper:
+  timeout_seconds: 30
+  max_retries: 3
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+  request_delay_seconds: 1
+
+matching:
+  # 突合に使用するキーフィールド
+  primary_key: "email"
+  secondary_keys:
+    - "company_name"
+    - "phone"
+  # 一致判定の閾値（0.0〜1.0）
+  similarity_threshold: 0.85
+
+sync:
+  # 同期モード: full（全件）/ incremental（差分）
+  mode: "incremental"
+  # バッチサイズ
+  batch_size: 100
+  # ドライラン（テスト実行）
+  dry_run: false
+
+logging:
+  level: "INFO"
+  format: "{time:YYYY-MM-DD HH:mm:ss} | {level} | {message}"
+  rotation: "10 MB"
+  retention: "7 days"
