@@ -33,6 +33,7 @@ POP_FILE = BASE_DIR / 'data' / 'population' / 'city_population_map.json'
 
 CSV_FILE_1 = Path(r'C:\Users\fuji1\OneDrive\デスクトップ\RCMEB002002_M100 (2).csv')
 CSV_FILE_2 = Path(r'C:\Users\fuji1\OneDrive\デスクトップ\RCMEB002002_M100.csv')
+CSV_FILE_3 = Path(r'C:\Users\fuji1\OneDrive\デスクトップ\RCMEB002002_M100 (3).csv')
 
 TODAY = datetime.now().strftime('%Y%m%d')
 TODAY_ISO = datetime.now().strftime('%Y-%m-%d')
@@ -259,7 +260,14 @@ def step1_load_data():
     print(f'  ファイル(2): {len(df1):,}件')
     print(f'  ファイル(元): {len(df2):,}件')
 
-    df = pd.concat([df1, df2], ignore_index=True)
+    dfs = [df1, df2]
+
+    if CSV_FILE_3.exists():
+        df3 = pd.read_csv(CSV_FILE_3, encoding='cp932', dtype=str)
+        print(f'  ファイル(3): {len(df3):,}件')
+        dfs.append(df3)
+
+    df = pd.concat(dfs, ignore_index=True)
     before = len(df)
     df = df.drop_duplicates(subset=['求人番号'], keep='first')
     print(f'  重複除去: {before:,} → {len(df):,}件 (-{before - len(df):,})')
@@ -883,6 +891,9 @@ def step8_generate_import_csv(df):
         records.append(record)
 
     result_df = pd.DataFrame(records)
+    # CorporateNumber__cがfloat化しないようstring型を保証
+    if 'CorporateNumber__c' in result_df.columns:
+        result_df['CorporateNumber__c'] = result_df['CorporateNumber__c'].astype(str).replace('nan', '')
     print(f'  有効レコード: {len(result_df):,}件')
     print(f'  スキップ（Company空）: {skipped_no_company}')
     print(f'  スキップ（Phone空）: {skipped_no_phone}')

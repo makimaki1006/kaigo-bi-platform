@@ -686,6 +686,86 @@ python scripts/export_salesforce.py
 - 新規リード必須フィールドバリデーション追加（Company, Phone空チェック）
 - Phoneフィールド必須対応（携帯のみでもPhoneに値を設定）
 
+### 2026-03-02 ハローワーク セグメントA/B 初回インポート
+
+| 処理段階 | 件数 |
+|---------|------|
+| ハローワーク入力（2ファイル結合） | 473,682件 |
+| A/B抽出 | 147,140件 |
+| 品質フィルタ後 | 25,918件 |
+| 重複排除後 | 10,382件 |
+| SF既存マッチ | 10,051件 |
+| 新規リード候補 | 331件 |
+| 成約先除外 | 0件 |
+| SF既存重複削除 | -204件 |
+| **最終Salesforce登録** | **127件** |
+
+| 項目 | 値 |
+|------|-----|
+| 所有者 | 小林 幸太（全件） |
+| レポート（全件） | `00Odc00000LErQ9EAL` |
+
+### 2026-03-05 ハローワーク セグメントA/B 第2回インポート
+
+| 処理段階 | 件数 |
+|---------|------|
+| ハローワーク入力（3ファイル結合） | 536,223件 |
+| A/B抽出（2軸MECE） | 167,794件 |
+| 多角的職種フィルタ（step2b） | 164,757件（-3,037） |
+| 品質フィルタ後 | 32,991件 |
+| 重複排除後 | 10,981件 |
+| SF既存マッチ | 10,839件 |
+| 新規リード候補 | 142件 |
+| 成約先除外 | 10件 |
+| **最終Salesforce登録** | **132件** |
+
+**所有者別内訳:**
+
+| 所有者 | 件数 | 備考 |
+|-------|------|------|
+| 深堀 勇侍 | 77件 | 保育園22件 + その他55件 |
+| 服部 翔太郎 | 55件 | |
+
+**成果物**:
+- 作成済みリードID: data/output/hellowork_segments/import_ready/created_lead_ids_20260305.csv
+- レポート（全体）: https://fora-career6.my.salesforce.com/lightning/r/Report/00Odc00000LV37BEAT/view
+- レポート（深堀）: https://fora-career6.my.salesforce.com/lightning/r/Report/00Odc00000LV3APEA1/view
+- レポート（服部）: https://fora-career6.my.salesforce.com/lightning/r/Report/00Odc00000LV3C1EAL/view
+
+**改善点**:
+- 3ファイル対応（RCMEB002002_M100 (3).csv 追加）
+- step2b 多角的職種フィルタ実装（44コード許可、募集難易度高を除外）
+- 同事業所の他募集情報をメモ欄に付与
+- CorporateNumber__c の .0 除去バグ修正
+
+### 2026-03-05 ミイダス保育園リスト インポート
+
+| 処理 | 件数 | 状態 |
+|-----|------|------|
+| 新規リード作成 | 66件 + 1件リトライ = **67件** | 完了 |
+| 既存Lead更新 | 76件成功 + 6件リトライ = **82件** | 完了 |
+| コンバート済みリードスキップ | 3件 | スキップ |
+| 既存Account更新 | **39件** | 完了 |
+| 成約先除外 | 7件 | 除外 |
+
+**所有者**: 新規リード全件 → 深堀、既存更新 → 所有者変更なし
+
+**メモ**:
+- 新規: `【新規作成】有料媒体突合 2026-03-05 ミイダス保育園リスト`
+- 更新: `【既存更新】有料媒体突合 2026-03-05 ミイダス保育園リスト`
+
+**成果物**:
+- レポート（新規リード）: https://fora-career6.my.salesforce.com/lightning/r/Report/00Odc00000LVWPKEA5/view
+- レポート（既存更新リード）: https://fora-career6.my.salesforce.com/lightning/r/Report/00Odc00000LVfyrEAD/view
+- レポート（Account更新）: https://fora-career6.my.salesforce.com/lightning/r/Report/00Odc00000LVdc6EAD/view
+
+**データソース**: `miidas_structured_data.csv` (339件、197列、2026-03-02スクレイピング)
+
+**既知の問題**:
+- Lead.Descriptionフィールドがこのorg上に存在しない → Description追記は未実行
+- LastNameにスペース含む6件 → LastName除外で他フィールドのみ更新
+- Paid_NumberOfRecruitment__c はdouble型 → 「3名」→「3」に変換
+
 ## 今後の改善候補
 
 （このセクションはsuggest-claude-mdコマンドで自動更新されます）

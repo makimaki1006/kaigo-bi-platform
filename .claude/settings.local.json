@@ -89,7 +89,12 @@
       "WebFetch(domain:www.hellowork.mhlw.go.jp)",
       "Bash(PYTHONPATH=src echo y:*)",
       "Bash(gh auth:*)",
-      "Bash(winget install:*)"
+      "Bash(winget install:*)",
+      "Bash(export:*)",
+      "Bash(cp:*)",
+      "Bash(mkdir:*)",
+      "Bash(PYTHONPATH=src python:*)",
+      "Bash(rm:*)"
     ]
   },
   "hooks": {

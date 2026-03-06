@@ -76,3 +76,4 @@ config/zoom_sync_config.yaml
 Thumbs.db
 *.bak
 *.tmp
+data/input/hellowork.csv
