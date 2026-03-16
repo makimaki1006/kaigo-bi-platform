@@ -1,16 +1,26 @@
 """
-ハローワーク セグメントA（医療看護保健）/ B（介護福祉）新規リード作成パイプライン
+ハローワーク セグメントC-F 新規リード作成パイプライン
 ====================================================================================
+対象セグメント:
+  C_工事: 総合工事・職別工事・設備工事・建設
+  D_ホテル旅館: 宿泊・ホテル・旅館
+  E_葬儀: 葬儀・葬祭
+  F_産業廃棄物: 廃棄物処理
+
 処理フロー:
   STEP 1: データ読み込み・結合
-  STEP 2: セグメントA/B 2軸抽出
-  STEP 2b: 多角的職種フィルタ（許可コードのみ残す）
+  STEP 2: セグメントC/D/E/F抽出（パターン① OR ②）
   STEP 3: 品質フィルタ（パート除外・従業員数・人口）
   STEP 4: 電話番号重複排除 + 法人番号重複排除 + 他職種情報集約
   STEP 5: Salesforce突合（Account/Contact/Lead）
   STEP 6: 成約先除外（電話番号+法人番号）
   STEP 7: 決裁者近接スコア付与（★1-5）
   STEP 8: Salesforceインポート用CSV生成
+
+A/Bパイプラインとの主な差異:
+  - STEP 2b（多角的職種フィルタ）なし: C-Fは産業内の全職種を含む
+  - STEP 3 人口閾値がセグメント別: C=50000, D=30000, E=50000, F=50000
+  - STEP 6.5（訪問看護除外・大分類Pフィルタ）なし: A/B固有のため不要
 """
 
 import pandas as pd
@@ -37,63 +47,35 @@ CSV_FILE_2 = Path(r'C:\Users\fuji1\OneDrive\デスクトップ\RCMEB002002_M100 
 TODAY = datetime.now().strftime('%Y%m%d')
 TODAY_ISO = datetime.now().strftime('%Y-%m-%d')
 
-# --- セグメント定義（マスタールールから） ---
+# --- セグメント定義（C-F） ---
 SEGMENTS = {
-    'A_医療看護保健': {
-        'industry_names_whitelist': [
-            '一般診療所', '病院', '助産・看護業',
-            '医療に附帯するサービス業', 'その他の保健衛生', '施術業',
-        ],
-        'industry_names_exclude': [
-            '歯科診療所', '獣医業',
-            '医薬品・化粧品小売業', '医薬品・化粧品等卸売業',
-            '医薬品製造業', '医療用機械器具・医療用品製造業',
-        ],
-        'industry_codes': [],
-        'industry_keywords': [],
-        'job_codes': [
-            '021-01',
-            '022-01', '022-02',
-            '023-01', '023-02', '023-03', '023-99',
-            '024-01', '024-02', '024-03', '024-04', '024-05', '024-06', '024-07',
-            '025-01', '025-02',
-            '026-01', '026-02',
-            '027-99',
-            '028-01',
-            '037-01',
-        ],
-        'job_major_prefixes': [],
-        'exclude_job_codes': [
-            '021-02', '021-03', '021-04',  # 歯科医師、獣医師、薬剤師
-            '024-08', '024-09',            # 歯科衛生士、歯科技工士
-            '028-02',                       # 歯科助手
-            '037-02',                       # 調剤薬局事務員
-        ],
-        'exclude_job_keywords': ['歯科', '薬剤師'],
-        'keep_job_keywords': [],
-        'pop_threshold': 30000,  # 医療：人口3万以上
+    'C_工事': {
+        'industry_codes': ['06', '07', '08'],
+        'industry_keywords': ['総合工事', '職別工事', '設備工事', '建設'],
+        'job_codes': ['007-03', '048-10', '080-01', '080-04', '089-04', '089-05'],
+        'job_major_prefixes': ['008', '090', '091', '092', '093', '094'],
+        'pop_threshold': 50000,
     },
-    'B_介護福祉': {
-        'industry_names_whitelist': [
-            '老人福祉・介護事業', '障害者福祉事業',
-            'その他の社会保険・社会福祉・介護事業',
-            '社会保険事業団体', '福祉事務所', '児童福祉事業',
-        ],
-        'industry_names_exclude': [
-            '幼稚園', '幼保連携型認定こども園',
-            '建物等維持管理業', '学習塾', 'スポーツ施設提供業',
-        ],
-        'industry_codes': [],
-        'industry_keywords': [],
-        'job_codes': [
-            '037-03',   # 介護事務員
-            '085-04',   # 介護タクシー運転手
-        ],
-        'job_major_prefixes': ['049', '050', '051'],  # 社会福祉の専門的職業
-        'exclude_job_codes': [],
-        'exclude_job_keywords': ['幼稚園教諭'],  # 保育士は含める（保育園OK）
-        'keep_job_keywords': ['児童指導員', '放課後', '児童発達', '保育'],
-        'pop_threshold': 30000,  # 介護：人口3万以上
+    'D_ホテル旅館': {
+        'industry_codes': ['75'],
+        'industry_keywords': ['宿泊', 'ホテル', '旅館'],
+        'job_codes': ['056-02', '056-04', '056-05', '096-03'],
+        'job_major_prefixes': [],
+        'pop_threshold': 30000,  # 観光地は低人口エリアが多い
+    },
+    'E_葬儀': {
+        'industry_codes': [],  # 79は広すぎるためキーワードのみ
+        'industry_keywords': ['葬儀', '葬祭'],
+        'job_codes': ['058-06'],
+        'job_major_prefixes': [],
+        'pop_threshold': 50000,
+    },
+    'F_産業廃棄物': {
+        'industry_codes': ['88'],
+        'industry_keywords': ['廃棄物'],
+        'job_codes': ['096-05', '096-06'],
+        'job_major_prefixes': [],
+        'pop_threshold': 50000,
     },
 }
 
@@ -118,39 +100,6 @@ DECISION_MAKER_TITLES = [
     '支配人', '統括', 'オーナー', '経営者',
 ]
 MANAGER_WALL_KEYWORDS = ['総務', '人事', '管理部', '管理課', '事務局', '労務']
-
-# --- パターン②多角的職種ポリシー（2026-03-03確定） ---
-# 医療・介護専門職の中分類プレフィックス（常に許可）
-MEDICAL_CARE_PREFIXES = [
-    '021', '022', '023', '024', '025', '026', '027',  # 医療系
-    '028',  # 看護助手・リハ助手
-    '037',  # 医療事務・介護事務
-    '049', '050', '051',  # 社会福祉専門職
-]
-
-# パターン②産業内で許可する多角的職種（小分類コード単位）
-DIVERSE_JOBS_ALLOWED = [
-    # 保育系
-    '029-01', '030-01', '030-03', '030-02',
-    # 調理系
-    '055-07', '055-08', '055-99', '055-06', '055-01',
-    # 運転・配送系
-    '085-02', '084-02', '085-99', '086-99', '085-04',
-    '082-02', '082-01', '083-02',
-    # 事務系
-    '034-01', '033-01', '034-03', '038-03', '033-02',
-    '035-99', '033-03', '040-01', '040-99',
-    # 営業系
-    '048-99',
-    # 管理職系
-    '002-01', '003-99',
-    # 清掃・洗濯系
-    '096-01', '099-99', '096-99', '099-03', '054-02',
-    # 施設管理・世話人系
-    '052-99', '052-01', '089-01', '057-02', '057-01',
-    # 教育系
-    '031-99',
-]
 
 
 # =====================================================================
@@ -208,7 +157,7 @@ def clean_corporate_number(val):
 
 
 def clean_date(val):
-    """日付フォーマット: YYYY/MM/DD → YYYY-MM-DD"""
+    """日付フォーマット: YYYY/MM/DD -> YYYY-MM-DD"""
     if pd.isna(val) or not val:
         return ''
     s = str(val).strip()[:10]
@@ -251,7 +200,7 @@ def get_surname(name):
 def normalize_column_names(df):
     """M300/M100(4)のカラム名差異を統一（M100(4)形式に合わせる）"""
     rename_map = {
-        # M300 → M100(4) 統一名
+        # M300 -> M100(4) 統一名
         '担当者電話番号': '選考担当者ＴＥＬ',
         '担当者氏名（漢字）': '選考担当者氏名漢字',
         '担当者氏名（カナ）': '選考担当者氏名フリガナ',
@@ -289,10 +238,27 @@ def step1_load_data():
         in2 = col in df2.columns
         print(f'  {col}: M300={in1}, M100(4)={in2}')
 
+    # 必要カラムのみ残してメモリ節約
+    KEEP_COLS = [
+        '求人番号', '事業所名漢字', '事業所名カナ', '事業所郵便番号', '事業所所在地',
+        '事業所ホームページ', '産業分類（コード）', '産業分類（名称）',
+        '職業分類１（コード）', '職業分類２（コード）', '職業分類３（コード）',
+        '職種', '雇用形態', '従業員数企業全体（コード）', '法人番号', '代表者名',
+        '代表者役職', '選考担当者ＴＥＬ', '選考担当者氏名漢字', '選考担当者氏名フリガナ',
+        '選考担当者課係名／役職名', '選考担当者Ｅメール', '選考担当者ＦＡＸ',
+        '受付年月日（西暦）', '求人有効年月日（西暦）', '設立年月日（西暦）',
+        '募集理由区分', '採用人数', '採用人数（コード）', '従業員数就業場所（コード）',
+    ]
+    keep1 = [c for c in KEEP_COLS if c in df1.columns]
+    keep2 = [c for c in KEEP_COLS if c in df2.columns]
+    df1 = df1[keep1]
+    df2 = df2[keep2]
+
     df = pd.concat([df1, df2], ignore_index=True)
+    del df1, df2
     before = len(df)
     df = df.drop_duplicates(subset=['求人番号'], keep='first')
-    print(f'  重複除去: {before:,} → {len(df):,}件 (-{before - len(df):,})')
+    print(f'  重複除去: {before:,} -> {len(df):,}件 (-{before - len(df):,})')
 
     # 電話番号正規化
     df['電話_正規化'] = df['選考担当者ＴＥＬ'].apply(normalize_phone)
@@ -306,34 +272,29 @@ def step1_load_data():
 
 
 # =====================================================================
-# STEP 2: セグメント抽出（2軸: パターン① OR ②）
+# STEP 2: セグメント抽出（パターン(1) OR (2)）
 # =====================================================================
 
 def extract_segment(df, seg_config):
-    """セグメント定義に基づいてデータを抽出（パターン① OR ②）"""
-    industry_whitelist = seg_config.get('industry_names_whitelist', [])
-    industry_exclude = seg_config.get('industry_names_exclude', [])
+    """セグメント定義に基づいてデータを抽出（パターン(1)職種 OR パターン(2)産業）
+
+    C-Fセグメントはシンプルな構造:
+    - industry_names_whitelist / industry_names_exclude は使用しない
+    - industry_codes / industry_keywords でパターン(2)判定
+    - job_codes / job_major_prefixes でパターン(1)判定
+    """
     industry_codes = seg_config.get('industry_codes', [])
     industry_keywords = seg_config.get('industry_keywords', [])
     job_codes = seg_config.get('job_codes', [])
     job_major_prefixes = seg_config.get('job_major_prefixes', [])
-    exclude_job_codes = seg_config.get('exclude_job_codes', [])
-    exclude_job_kw = seg_config.get('exclude_job_keywords', [])
-    keep_job_kw = seg_config.get('keep_job_keywords', [])
 
     def matches(row):
         ind_name = str(row.get('産業分類（名称）', ''))
         ind_code = str(row.get('産業分類（コード）', ''))
 
-        # 産業分類除外
-        if ind_name in industry_exclude:
-            return False
-
-        # パターン②: 産業分類
+        # パターン(2): 産業分類コード or キーワード
         pattern2 = False
-        if industry_whitelist and ind_name in industry_whitelist:
-            pattern2 = True
-        elif industry_codes:
+        if industry_codes:
             code_2 = ind_code[:2] if len(ind_code) >= 2 else ind_code
             if code_2 in industry_codes:
                 pattern2 = True
@@ -341,31 +302,20 @@ def extract_segment(df, seg_config):
             if any(kw in ind_name for kw in industry_keywords):
                 pattern2 = True
 
-        # パターン①: 職種分類
+        # パターン(1): 職種分類コード
         pattern1 = False
         job_code_cols = ['職業分類１（コード）', '職業分類２（コード）', '職業分類３（コード）']
-        job_title = str(row.get('職種', ''))
 
         for col in job_code_cols:
             jc = str(row.get(col, ''))
             if pd.isna(row.get(col)) or jc == 'nan':
                 continue
 
-            # 除外コード
-            if jc in exclude_job_codes:
-                continue
-
-            # 職種キーワード除外（keep優先）
-            if exclude_job_kw:
-                has_keep = any(kw in job_title for kw in keep_job_kw) if keep_job_kw else False
-                if not has_keep and any(kw in job_title for kw in exclude_job_kw):
-                    continue
-
-            # コード一致
+            # コード完全一致
             if jc in job_codes:
                 pattern1 = True
                 break
-            # 大分類プレフィックス
+            # 大分類プレフィックス一致
             for prefix in job_major_prefixes:
                 if jc.startswith(prefix):
                     pattern1 = True
@@ -379,9 +329,9 @@ def extract_segment(df, seg_config):
 
 
 def step2_extract(df):
-    """セグメントA/Bを抽出"""
+    """セグメントC/D/E/Fを抽出"""
     print('\n' + '=' * 60)
-    print('STEP 2: セグメント抽出（2軸）')
+    print('STEP 2: セグメント抽出（C/D/E/F）')
     print('=' * 60)
 
     results = {}
@@ -395,65 +345,41 @@ def step2_extract(df):
         for ind, cnt in top5.items():
             print(f'    - {ind}: {cnt:,}')
 
-    # 結合（重複除去）
-    all_ab = pd.concat(results.values(), ignore_index=True)
-    all_ab = all_ab.drop_duplicates(subset=['求人番号'], keep='first')
-    print(f'\n  A+B結合（重複除去後）: {len(all_ab):,}件')
+    # セグメント間の重複チェック
+    all_job_nums = {}
+    for seg_name, seg_df in results.items():
+        for jn in seg_df['求人番号']:
+            if jn in all_job_nums:
+                all_job_nums[jn].append(seg_name)
+            else:
+                all_job_nums[jn] = [seg_name]
+    overlap_count = sum(1 for v in all_job_nums.values() if len(v) > 1)
+    if overlap_count > 0:
+        print(f'\n  セグメント間重複: {overlap_count:,}件（先に該当したセグメントに帰属）')
 
-    return all_ab, results
+    # 結合（重複除去: 求人番号ベース）
+    all_cf = pd.concat(results.values(), ignore_index=True)
+    before_dedup = len(all_cf)
+    all_cf = all_cf.drop_duplicates(subset=['求人番号'], keep='first')
+    print(f'\n  C+D+E+F結合（重複除去後）: {len(all_cf):,}件 (重複除去 -{before_dedup - len(all_cf):,})')
 
+    # セグメントラベル付与（後続で使用）
+    seg_label_map = {}
+    for seg_name, seg_df in results.items():
+        for jn in seg_df['求人番号']:
+            if jn not in seg_label_map:
+                seg_label_map[jn] = seg_name
+    all_cf['_segment'] = all_cf['求人番号'].map(seg_label_map)
 
-# =====================================================================
-# STEP 2b: 多角的職種フィルタ
-# =====================================================================
-
-def step2b_diverse_job_filter(df):
-    """パターン②産業内の多角的職種フィルタ: 許可リストにない職種を除外"""
-    print('\n' + '=' * 60)
-    print('STEP 2b: 多角的職種フィルタ')
-    print('=' * 60)
-
-    initial = len(df)
-
-    job_code = df['職業分類１（コード）'].fillna('')
-    mid_code = job_code.str[:3]
-
-    # 医療介護専門職（中分類プレフィックス一致） → 常に許可
-    is_medical = mid_code.isin(MEDICAL_CARE_PREFIXES)
-
-    # 許可された多角的職種（小分類コード完全一致）
-    is_diverse_allowed = job_code.isin(DIVERSE_JOBS_ALLOWED)
-
-    keep = is_medical | is_diverse_allowed
-    df_filtered = df[keep].copy()
-    excluded = df[~keep]
-
-    medical_count = is_medical.sum()
-    diverse_count = (is_diverse_allowed & ~is_medical).sum()
-    excluded_count = len(excluded)
-
-    print(f'  医療介護専門職: {medical_count:,}件')
-    print(f'  許可多角的職種: {diverse_count:,}件')
-    print(f'  除外: {excluded_count:,}件')
-
-    # 除外された職種の内訳（TOP10）
-    if excluded_count > 0:
-        excluded_codes = excluded['職業分類１（コード）'].value_counts().head(10)
-        print(f'  除外職種TOP10:')
-        for code, cnt in excluded_codes.items():
-            sample = excluded[excluded['職業分類１（コード）'] == code]['職種'].iloc[0]
-            print(f'    {code}: {cnt:,}件 ({sample[:30]})')
-
-    print(f'\n  フィルタ後: {len(df_filtered):,}件 (除外率: {excluded_count/initial*100:.1f}%)')
-    return df_filtered
+    return all_cf, results
 
 
 # =====================================================================
-# STEP 3: 品質フィルタ
+# STEP 3: 品質フィルタ（セグメント別人口閾値）
 # =====================================================================
 
 def step3_quality_filter(df):
-    """パート除外・従業員数フィルタ・人口フィルタ"""
+    """パート除外・従業員数フィルタ・人口フィルタ（セグメント別閾値）"""
     print('\n' + '=' * 60)
     print('STEP 3: 品質フィルタ')
     print('=' * 60)
@@ -462,7 +388,7 @@ def step3_quality_filter(df):
 
     # 3-1: パート除外
     df_filtered = df[~df['雇用形態'].str.contains('パート', na=False)]
-    print(f'  パート除外: {initial:,} → {len(df_filtered):,} (-{initial - len(df_filtered):,})')
+    print(f'  パート除外: {initial:,} -> {len(df_filtered):,} (-{initial - len(df_filtered):,})')
 
     # 3-2: 従業員数フィルタ (11-150)
     before = len(df_filtered)
@@ -470,31 +396,39 @@ def step3_quality_filter(df):
         (df_filtered['従業員数_数値'] >= EMP_MIN) &
         (df_filtered['従業員数_数値'] <= EMP_MAX)
     ]
-    print(f'  従業員数 {EMP_MIN}-{EMP_MAX}: {before:,} → {len(df_filtered):,} (-{before - len(df_filtered):,})')
+    print(f'  従業員数 {EMP_MIN}-{EMP_MAX}: {before:,} -> {len(df_filtered):,} (-{before - len(df_filtered):,})')
 
-    # 3-3: 人口フィルタ
+    # 3-3: 人口フィルタ（セグメント別閾値）
     if POP_FILE.exists():
         with open(POP_FILE, 'r', encoding='utf-8') as f:
             pop_map = json.load(f)
 
         before = len(df_filtered)
         pref_city = df_filtered['事業所所在地'].apply(lambda x: extract_pref_city(x))
+        df_filtered = df_filtered.copy()
         df_filtered['_pref'] = pref_city.apply(lambda x: x[0])
         df_filtered['_city'] = pref_city.apply(lambda x: x[1])
         df_filtered['_pop_key'] = df_filtered['_pref'] + df_filtered['_city']
         df_filtered['_population'] = df_filtered['_pop_key'].map(pop_map).fillna(0).astype(int)
 
-        # 人口閾値30000で統一（A/B共通）
-        pop_threshold = 30000
-        df_filtered = df_filtered[df_filtered['_population'] >= pop_threshold]
-        print(f'  人口 ≥ {pop_threshold:,}: {before:,} → {len(df_filtered):,} (-{before - len(df_filtered):,})')
+        # セグメント別人口閾値を適用
+        pop_thresholds = {seg: cfg['pop_threshold'] for seg, cfg in SEGMENTS.items()}
+        df_filtered['_pop_threshold'] = df_filtered['_segment'].map(pop_thresholds).fillna(50000).astype(int)
+        pop_pass = df_filtered['_population'] >= df_filtered['_pop_threshold']
+        df_filtered = df_filtered[pop_pass]
+
+        # セグメント別除外状況
+        print(f'  人口フィルタ（セグメント別閾値）: {before:,} -> {len(df_filtered):,} (-{before - len(df_filtered):,})')
+        for seg, threshold in pop_thresholds.items():
+            seg_count = (df_filtered['_segment'] == seg).sum()
+            print(f'    {seg} (>={threshold:,}人): {seg_count:,}件')
     else:
-        print(f'  ⚠️ 人口データなし: {POP_FILE}')
+        print(f'  警告: 人口データなし: {POP_FILE}')
 
     # 3-4: 電話番号なしを除外
     before = len(df_filtered)
     df_filtered = df_filtered[df_filtered['電話_正規化'] != '']
-    print(f'  電話番号あり: {before:,} → {len(df_filtered):,} (-{before - len(df_filtered):,})')
+    print(f'  電話番号あり: {before:,} -> {len(df_filtered):,} (-{before - len(df_filtered):,})')
 
     print(f'\n  品質フィルタ後: {len(df_filtered):,}件 (除外率: {(1 - len(df_filtered)/initial)*100:.1f}%)')
     return df_filtered
@@ -517,7 +451,7 @@ def step4_dedup(df):
         lambda x: list(x.unique())
     ).to_dict()
 
-    # 近接スコア計算（重複排除の優先度判定に使用）
+    # 雇用形態優先度
     df = df.copy()
     df['_emp_pri'] = df['雇用形態'].map(EMPLOYMENT_PRIORITY).fillna(5)
 
@@ -525,7 +459,7 @@ def step4_dedup(df):
     before = len(df)
     df = df.sort_values(['_emp_pri'], ascending=True)
     df = df.drop_duplicates(subset=['電話_正規化'], keep='first')
-    print(f'  電話番号重複除去: {before:,} → {len(df):,} (-{before - len(df):,})')
+    print(f'  電話番号重複除去: {before:,} -> {len(df):,} (-{before - len(df):,})')
 
     # 4-2: 法人番号重複排除
     df['法人番号_clean'] = df['法人番号'].apply(clean_corporate_number)
@@ -533,8 +467,9 @@ def step4_dedup(df):
     no_corp = df[df['法人番号_clean'] == '']
 
     before_corp = len(has_corp)
-    # 本社番号（一般的市外局番）を優先
+
     def phone_score(phone):
+        """本社番号（一般的市外局番）を優先"""
         digits = str(phone)
         if re.match(r'^0[3-9]\d{8}$', digits):
             return 3
@@ -548,7 +483,7 @@ def step4_dedup(df):
     has_corp['_phone_score'] = has_corp['電話_正規化'].apply(phone_score)
     has_corp = has_corp.sort_values(['_phone_score'], ascending=False)
     has_corp = has_corp.drop_duplicates(subset=['法人番号_clean'], keep='first')
-    print(f'  法人番号重複除去: {before_corp:,} → {len(has_corp):,} (-{before_corp - len(has_corp):,})')
+    print(f'  法人番号重複除去: {before_corp:,} -> {len(has_corp):,} (-{before_corp - len(has_corp):,})')
 
     df = pd.concat([has_corp, no_corp], ignore_index=True)
     print(f'\n  重複排除後: {len(df):,}件 (初期比 -{initial - len(df):,})')
@@ -603,8 +538,6 @@ def step5_sf_matching(df):
 
     if lead_file:
         lead = pd.read_csv(lead_file[0], encoding='utf-8-sig', dtype=str)
-        # 取引開始済も含めて全Leadの電話番号をマッチング対象にする
-        # （更新はしないが、重複チェック用に電話番号セットには含める）
         for col in ['Phone', 'MobilePhone', 'Phone2__c', 'MobilePhone2__c']:
             if col in lead.columns:
                 phones = lead[col].apply(normalize_phone)
@@ -639,7 +572,7 @@ def step6_contract_exclusion(df):
                            key=lambda p: p.stat().st_mtime, reverse=True)
 
     if not contract_file:
-        print('  ⚠️ 成約先データなし - Salesforceから取得が必要')
+        print('  警告: 成約先データなし - Salesforceから取得が必要')
         return df, 0
 
     contracts = pd.read_csv(contract_file[0], encoding='utf-8-sig', dtype=str)
@@ -670,62 +603,10 @@ def step6_contract_exclusion(df):
     excluded_count = is_contract.sum()
     df_safe = df[~is_contract]
 
-    print(f'\n  🔴 成約先除外: {excluded_count:,}件')
+    print(f'\n  成約先除外: {excluded_count:,}件')
     print(f'  安全な新規リード: {len(df_safe):,}件')
 
     return df_safe, excluded_count
-
-
-# =====================================================================
-# STEP 6.5: 追加除外フィルタ（訪問看護 + 大分類P以外ノイズ）
-# =====================================================================
-
-def step6b_additional_exclusion(df):
-    """マスタールール STEP 7: 訪問看護除外 + 大分類P以外ノイズ除外"""
-    print('\n' + '=' * 60)
-    print('STEP 6.5: 追加除外フィルタ（セグメントA/B固有）')
-    print('=' * 60)
-
-    before = len(df)
-
-    # --- 訪問看護除外 ---
-    VISITING_NURSE_KW = ['訪問看護']
-    VISITING_NURSE_COMPANY_KW = ['訪問看護', 'ナーシング']
-
-    mask_job = df['職種'].str.contains('|'.join(VISITING_NURSE_KW), na=False)
-    mask_company = df['事業所名漢字'].str.contains('|'.join(VISITING_NURSE_COMPANY_KW), na=False)
-    visiting_nurse_mask = mask_job | mask_company
-    vn_count = visiting_nurse_mask.sum()
-
-    if vn_count > 0:
-        print(f'  訪問看護除外: {vn_count}件')
-        excluded_vn = df[visiting_nurse_mask][['事業所名漢字', '職種']].head(5)
-        for _, r in excluded_vn.iterrows():
-            print(f'    - {r["事業所名漢字"]}: {r["職種"]}')
-
-    df = df[~visiting_nurse_mask]
-
-    # --- 大分類P以外のノイズ除外 ---
-    # 産業分類コードが83/84/85始まり（医療,福祉）のみ残す
-    ind_code_col = '産業分類（コード）'
-    if ind_code_col in df.columns:
-        codes = df[ind_code_col].astype(str)
-        is_p = codes.str.startswith(('83', '84', '85'))
-        non_p_count = (~is_p).sum()
-        if non_p_count > 0:
-            print(f'  大分類P以外除外: {non_p_count}件')
-            non_p_df = df[~is_p]
-            top_codes = non_p_df['産業分類（名称）'].value_counts().head(5)
-            for name, cnt in top_codes.items():
-                print(f'    - {name}: {cnt}件')
-        df = df[is_p]
-    else:
-        print(f'  ⚠️ {ind_code_col} カラムなし - 大分類P除外スキップ')
-
-    after = len(df)
-    print(f'\n  除外前: {before}件 → 除外後: {after}件（-{before - after}件）')
-
-    return df, before - after
 
 
 # =====================================================================
@@ -740,7 +621,6 @@ def step7_proximity_score(df):
 
     df = df.copy()
 
-    # 各指標を計算
     def calc_indicators(row):
         rep_name = normalize_name(row.get('代表者名', ''))
         contact_name = normalize_name(row.get('選考担当者氏名漢字', ''))
@@ -844,17 +724,6 @@ def step8_generate_import_csv(df):
     output_dir = DATA_DIR / 'import_ready'
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    # セグメント判定
-    def classify_segment(row):
-        ind = str(row.get('産業分類（名称）', ''))
-        if ind in SEGMENTS['A_医療看護保健']['industry_names_whitelist']:
-            return 'A_医療看護保健'
-        if ind in SEGMENTS['B_介護福祉']['industry_names_whitelist']:
-            return 'B_介護福祉'
-        return 'AB_その他'
-
-    df['_segment'] = df.apply(classify_segment, axis=1)
-
     records = []
     skipped_no_company = 0
     skipped_no_phone = 0
@@ -896,8 +765,8 @@ def step8_generate_import_csv(df):
         # メール
         email = validate_email(row.get('選考担当者Ｅメール', ''))
 
-        # メモ
-        seg = row.get('_segment', 'AB')
+        # セグメント・メモ情報
+        seg = str(row.get('_segment', 'CF'))
         stars = str(row.get('近接スコア_星', '★★☆☆☆'))
         job = str(row.get('職種', ''))
         emp_type = str(row.get('雇用形態', ''))
@@ -916,10 +785,11 @@ def step8_generate_import_csv(df):
         recruit_reason_line = f'\n募集理由: {recruit_reason}' if recruit_reason else ''
         recruit_num_line = f'\n採用人数: {recruit_num}' if recruit_num else ''
 
+        # Publish_ImportText__c: 産業分類を追加（C-F固有）
         publish_text = (
             f'[{TODAY_ISO} ハロワ新規_{seg}]\n'
             f'セグメント: {seg}\n'
-            f'業界: {ind}\n'
+            f'産業分類: {ind}\n'
             f'職種: {job}\n'
             f'雇用形態: {emp_type}\n'
             f'従業員数: {emp_count}\n'
@@ -972,7 +842,7 @@ def step8_generate_import_csv(df):
             'LeadSourceMemo__c': lead_source_memo[:255] if len(lead_source_memo) > 255 else lead_source_memo,
             'LeadSource': 'ハローワーク',
             'Status': '未架電',
-            # 近接スコア（参考用、セグメント列）
+            # 参考用メタデータ（インポート時に除外可能）
             '_segment': seg,
             '_proximity_score': row.get('近接スコア', 2),
             '_proximity_stars': stars,
@@ -992,8 +862,16 @@ def step8_generate_import_csv(df):
     for seg, cnt in seg_dist.items():
         print(f'  {seg}: {cnt:,}件')
 
+    # 近接スコア分布
+    score_dist = result_df['_proximity_score'].value_counts().sort_index()
+    stars_map = {5: '★★★★★', 4: '★★★★☆', 3: '★★★☆☆', 2: '★★☆☆☆', 1: '★☆☆☆☆'}
+    print(f'\n  近接スコア分布:')
+    for score, cnt in score_dist.items():
+        star_label = stars_map.get(int(score), '?')
+        print(f'    {star_label}: {cnt:,}件')
+
     # 出力
-    output_path = output_dir / f'import_AB_{TODAY}.csv'
+    output_path = output_dir / f'import_CF_{TODAY}.csv'
     result_df.to_csv(output_path, index=False, encoding='utf-8-sig')
     print(f'\n  出力: {output_path}')
 
@@ -1006,21 +884,19 @@ def step8_generate_import_csv(df):
 
 def main():
     print('━' * 60)
-    print(f'ハローワーク セグメントA/B 新規リード作成パイプライン')
+    print(f'ハローワーク セグメントC-F 新規リード作成パイプライン')
     print(f'実行日: {TODAY_ISO}')
+    print(f'対象: C_工事 / D_ホテル旅館 / E_葬儀 / F_産業廃棄物')
     print('━' * 60)
 
     # STEP 1
     df = step1_load_data()
 
-    # STEP 2
-    all_ab, seg_results = step2_extract(df)
-
-    # STEP 2b: パターン②多角的職種フィルタ
-    all_ab = step2b_diverse_job_filter(all_ab)
+    # STEP 2（多角的職種フィルタなし: C-Fは産業内の全職種を含む）
+    all_cf, seg_results = step2_extract(df)
 
     # STEP 3
-    filtered = step3_quality_filter(all_ab)
+    filtered = step3_quality_filter(all_cf)
 
     # STEP 4
     deduped = step4_dedup(filtered)
@@ -1031,11 +907,8 @@ def main():
     # STEP 6
     safe_leads, excluded = step6_contract_exclusion(new_leads)
 
-    # STEP 6.5: 追加除外フィルタ（訪問看護 + 大分類P以外ノイズ）
-    clean_leads, additional_excluded = step6b_additional_exclusion(safe_leads)
-
     # STEP 7
-    scored = step7_proximity_score(clean_leads)
+    scored = step7_proximity_score(safe_leads)
 
     # STEP 8
     import_df = step8_generate_import_csv(scored)
@@ -1045,24 +918,31 @@ def main():
     print('パイプライン完了サマリー')
     print('━' * 60)
     print(f'  入力データ: {len(df):,}件')
-    print(f'  A/B抽出（職種フィルタ後）: {len(all_ab):,}件')
+    print(f'  C-F抽出: {len(all_cf):,}件')
     print(f'  品質フィルタ後: {len(filtered):,}件')
     print(f'  重複排除後: {len(deduped):,}件')
     print(f'  SF既存マッチ: {len(existing):,}件')
     print(f'  新規リード候補: {len(new_leads):,}件')
     print(f'  成約先除外: {excluded}件')
-    print(f'  追加除外（訪問看護+大分類P以外）: {additional_excluded}件')
     print(f'  最終インポート候補: {len(import_df):,}件')
+
+    # セグメント別サマリー
+    if len(import_df) > 0:
+        print(f'\n  セグメント別内訳:')
+        for seg in SEGMENTS.keys():
+            cnt = (import_df['_segment'] == seg).sum()
+            if cnt > 0:
+                print(f'    {seg}: {cnt:,}件')
 
     # 中間ファイル保存
     matched_dir = DATA_DIR / 'matched'
     matched_dir.mkdir(parents=True, exist_ok=True)
 
-    safe_leads.to_csv(matched_dir / f'new_leads_AB_all.csv', index=False, encoding='utf-8-sig')
-    existing.to_csv(matched_dir / f'existing_AB_all.csv', index=False, encoding='utf-8-sig')
+    safe_leads.to_csv(matched_dir / f'new_leads_CF_all.csv', index=False, encoding='utf-8-sig')
+    existing.to_csv(matched_dir / f'existing_CF_all.csv', index=False, encoding='utf-8-sig')
     print(f'\n  中間ファイル:')
-    print(f'    {matched_dir / "new_leads_AB_all.csv"}')
-    print(f'    {matched_dir / "existing_AB_all.csv"}')
+    print(f'    {matched_dir / "new_leads_CF_all.csv"}')
+    print(f'    {matched_dir / "existing_CF_all.csv"}')
 
     return import_df
 

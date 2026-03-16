@@ -766,6 +766,116 @@ python scripts/export_salesforce.py
 - LastNameにスペース含む6件 → LastName除外で他フィールドのみ更新
 - Paid_NumberOfRecruitment__c はdouble型 → 「3名」→「3」に変換
 
+### 2026-03-09 ウェルミージョブ（kaigojob）新規リードインポート
+
+| 処理段階 | 件数 |
+|---------|------|
+| kaigojob求人データ入力 | 9,661件 |
+| Google検索スクレイピング（2ファイル結合） | 4,132件 + 6,946件 |
+| URL突合で電話番号取得 | 5,743件（ユニーク電話番号） |
+| SF既存マッチ（Lead/Account） | 3,434件 |
+| 成約先除外（電話番号+法人番号） | 380件 |
+| 新規リード候補 | 1,929件 |
+| ハローワーク従業員数補完 | 346件マッチ（67件電話+279件名前住所） |
+| 追加成約先除外（HW法人番号） | 49件 |
+| 従業員数11-100フィルタ後 | **101件** |
+| **Salesforceインポート** | **101件成功 / 0件失敗** |
+
+| 項目 | 値 |
+|------|-----|
+| 所有者 | 藤巻 真弥（全件） |
+| LeadSource | 有料媒体 |
+| メモフィールド | `Paid_Memo__c`（【有料】求人メモ） |
+| バッチジョブID | `750dc00000eFOSnAAO` |
+
+**メモ欄内容**:
+- `【新規作成】ウェルミージョブ 求人入稿日: 2026-03-09`
+- `ハローワーク突合済み`
+- 求人情報（法人名、事業所名、サービス区分/種別、募集職種、給与、雇用形態、勤務地、応募資格、仕事内容、勤務時間、福利厚生、求人URL）
+- ハローワーク突合データ（突合方法、従業員数、法人番号、代表者名/役職、資本金、設立年、産業分類、事業内容）
+
+**データパイプライン**:
+1. kaigojob求人データ（法人名、事業所名、サービス種別等）
+2. Google検索スクレイピング（電話番号、住所取得）
+3. URL突合で情報統合
+4. SF Lead/Account電話番号マッチング（既存除外）
+5. 成約先除外（電話番号 + HW法人番号）
+6. ハローワーク補完（名前+住所マッチング、住所検証付き）
+7. 従業員数11-100名フィルタ
+8. Salesforce Bulk API 2.0 インポート
+
+**成果物**:
+- 作成済みリードID: data/output/google_scraping/created_lead_ids_20260309.csv
+- インポートCSV: data/output/google_scraping/kaigojob_sf_import_20260309.csv
+- レポート: https://fora-career6.my.salesforce.com/lightning/r/Report/00Odc00000LjoUPEAZ/view
+
+**既知の問題・対応**:
+- `Description` 標準フィールドがこのorgに存在しない → `Paid_Memo__c` を使用
+- 従業員数未補完の残り1,584件は保留中（HWマッチなし）
+
+**関連スクリプト**:
+| スクリプト | 用途 |
+|-----------|------|
+| `scripts/merge_all_kaigojob_v2.py` | 全データソース統合（kaigojob+Google+SF突合） |
+| `scripts/enrich_kaigojob_v2_from_hellowork.py` | ハローワーク従業員数・法人情報補完 |
+| `scripts/prepare_kaigojob_import_v2.py` | SFインポート用CSV生成（藤巻全件割当） |
+| `scripts/import_kaigojob_20260309.py` | Bulk API 2.0インポート＋レポート作成 |
+
+### 2026-03-10 有料媒体インポート（PT・OT・STネット + ジョブポスター）
+
+| 処理 | 成功 | 失敗 | 備考 |
+|-----|------|------|------|
+| 新規リード作成 | 210件 | 0件 | 全件成功（リトライ含む） |
+| 既存Lead更新 | 402件 | 4件 | コンバート済み4件スキップ |
+| 既存Account更新 | 307件 | 0件 | 全件成功 |
+
+**所有者別内訳（新規リード）:**
+
+| 所有者 | 件数 |
+|-------|------|
+| 深堀 勇侍 | 105件 |
+| 服部 翔太郎 | 105件 |
+
+**メモ**:
+- 新規: `【新規作成】有料媒体突合 2026-03-10 PT・OT・STネット / ジョブポスター`
+- 更新: `【既存更新】有料媒体突合 2026-03-10 PT・OT・STネット / ジョブポスター`
+
+**成果物**:
+- 作成済みリードID: data/output/media_matching/created_lead_ids_20260310.csv（222件）
+- レポート（新規作成・全体）: https://fora-career6.my.salesforce.com/lightning/r/Report/00Odc00000LpHAnEAN/view
+- レポート（新規作成・深堀）: https://fora-career6.my.salesforce.com/lightning/r/Report/00Odc00000LqczZEAR/view
+- レポート（新規作成・服部）: https://fora-career6.my.salesforce.com/lightning/r/Report/00Odc00000Lqd1BEAR/view
+- レポート（Lead更新）: https://fora-career6.my.salesforce.com/lightning/r/Report/00Odc00000LpHE1EAN/view
+- レポート（Account更新）: https://fora-career6.my.salesforce.com/lightning/r/Report/00Odc00000LpQQzEAN/view
+
+**データソース**:
+- PT・OT・STネット: `extracted_phone_and_name.csv`（スクレイピング）
+- ジョブポスター: `job-poster.com-から詳細をスクレイピングします--2--2026-03-10.csv`
+
+**処理フロー**:
+1. 2ファイル読み込み・電話番号正規化
+2. 成約先除外（電話+会社名）: 65件除外
+3. 媒体掲載中リスト除外（電話済み）
+4. SF既存Lead/Account/Contact突合
+5. 新規/更新/Account更新のCSV生成
+6. Bulk API 2.0インポート + レポート作成
+
+**リトライで解決した問題**:
+- LeadSourceMemo__c 255文字超過 → 252文字+`...`に切り詰め
+- Prefecture__c 制限付き選択リスト無効値 → Describe APIで有効値取得、無効値クリア
+- Paid_EmploymentType__c 255文字超過 → 切り詰め
+- 全角数字（Paid_NumberOfRecruitment__c） → 半角変換
+- LastNameバリデーション（スペース含む） → LastName列除外で更新
+- AccountレポートACCOUNT_NAME無効 → `ACCOUNT.NAME`に修正
+
+**関連スクリプト**:
+| スクリプト | 用途 |
+|-----------|------|
+| `scripts/generate_media_csv_20260310.py` | マスタールール準拠CSV生成 |
+| `scripts/import_media_20260310.py` | Bulk API 2.0インポート＋レポート作成 |
+| `scripts/retry_media_20260310.py` | リトライ v1（LastName除外等） |
+| `scripts/retry_media_20260310_v2.py` | リトライ v2（Prefecture修正、全角数字修正） |
+
 ## 今後の改善候補
 
 （このセクションはsuggest-claude-mdコマンドで自動更新されます）

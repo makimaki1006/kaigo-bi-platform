@@ -40,6 +40,32 @@
 - 理由: 既に電話済みのため重複架電を防止
 - 全シートから電話番号を抽出して除外
 
+### 2.5. 訪問看護除外
+
+**訪問看護系のリードは営業対象外のため除外する。**
+
+- **判定対象フィールド**: Company, Paid_Memo__c, Paid_JobTitle__c, Paid_RecruitmentType__c, Paid_Industry__c
+- **判定キーワード**: `訪問看護`, `ナーシング` のいずれかを含む（部分一致）
+- **適用範囲**: 新規リード・既存更新の両方
+- **除外タイミング**: CSV生成時（STEP 3）
+
+```python
+# 訪問看護除外ロジック
+HOUMON_KANGO_KEYWORDS = ['訪問看護', 'ナーシング']
+HOUMON_KANGO_CHECK_COLS = ['Company', 'Paid_Memo__c', 'Paid_JobTitle__c',
+                            'Paid_RecruitmentType__c', 'Paid_Industry__c']
+
+def is_houmon_kango(row):
+    """訪問看護関連かどうか判定"""
+    for col in HOUMON_KANGO_CHECK_COLS:
+        val = row.get(col, '')
+        if isinstance(val, str):
+            for kw in HOUMON_KANGO_KEYWORDS:
+                if kw in val:
+                    return True
+    return False
+```
+
 ### 3. ユーザー確認必須
 
 **Salesforceへのインポート前に必ずユーザーの明示的な許可を取得すること**
@@ -74,7 +100,8 @@
 
 [STEP 3] 除外処理
 ├─ 成約先電話番号一致 → 除外
-└─ 電話済み電話番号一致 → 除外
+├─ 電話済み電話番号一致 → 除外
+└─ 訪問看護キーワード一致 → 除外（Company等に「訪問看護」を含む）
 
 [STEP 4] Salesforce突合
 ├─ 電話番号で既存レコード検索
@@ -406,6 +433,7 @@ Salesforce Reports APIでレポート作成
 
 - [ ] 成約先が除外されているか
 - [ ] 電話済みが除外されているか
+- [ ] 訪問看護系が除外されているか
 - [ ] セグメント分析結果が妥当か
 - [ ] 所有者割り当てが正しいか
 
@@ -688,6 +716,7 @@ MASTER_RULE_paid_media.md（本ドキュメント = 総合ルール）
 | 2026-01-09 | **成約先漏れ問題の原因・会社名突合による再発防止策を追加** |
 | 2026-01-09 | 処理実績を更新（734件→698件、削除36件：電話番号なし21件+成約先15件） |
 | 2026-03-05 | ミイダス保育園リスト処理実績追加（新規67件、Lead更新82件、Account更新39件） |
+| 2026-03-11 | **訪問看護除外ルール追加**（Company等に「訪問看護」含むレコードをCSV生成時に除外） |
 
 ---
 

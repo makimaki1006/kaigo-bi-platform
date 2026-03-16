@@ -61,6 +61,13 @@ htmlcov/
 # Claude Code セッションデータ
 .claude/projects/
 .claude/memory/
+.claude/settings.local.json
+
+# Serena IDE設定
+.serena/
+
+# Windows誤生成
+nul
 
 # 一時ファイル
 temp_*.txt
