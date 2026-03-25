@@ -86,14 +86,16 @@ function GrowthContent() {
   );
 
   // 開業率/廃業率（折れ線グラフ用）
+  // バックエンドは closure_rate（closing_rateではない）を返す
   const dynamicsChartData = useMemo(() => {
     if (!businessDynamicsData) return [];
     return [...businessDynamicsData]
-      .sort((a, b) => a.fiscal_year - b.fiscal_year)
+      .filter((d) => d.fiscal_year != null)
+      .sort((a, b) => String(a.fiscal_year).localeCompare(String(b.fiscal_year)))
       .map((d) => ({
         year: String(d.fiscal_year),
-        opening_rate: Math.round(d.opening_rate * 1000) / 10,
-        closing_rate: Math.round(d.closing_rate * 1000) / 10,
+        opening_rate: Math.round((d.opening_rate ?? 0) * 1000) / 10,
+        closing_rate: Math.round((d.closure_rate ?? 0) * 1000) / 10,
       }));
   }, [businessDynamicsData]);
 

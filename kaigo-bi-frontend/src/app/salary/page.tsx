@@ -145,26 +145,34 @@ function SalaryContent() {
     return null;
   }, [kpi, jobTypeWages]);
 
-  // 求人給与ベンチマーク（職種別、棒グラフ用）
+  // 求人給与ベンチマーク（業種x雇用形態別、棒グラフ用）
+  // mean_min と mean_max の中間値を平均給与として使用
   const benchmarkChartData = useMemo(() => {
     if (!salaryBenchmark) return [];
     return [...salaryBenchmark]
+      .filter((d) => d.mean_min != null || d.mean_max != null)
+      .map((d) => {
+        const avgSalary = d.mean_min != null && d.mean_max != null
+          ? (d.mean_min + d.mean_max) / 2
+          : (d.mean_min ?? d.mean_max ?? 0);
+        return {
+          occupation: `${d.industry_major_code}(${d.emp_group})`,
+          avg_salary: Math.round(avgSalary),
+        };
+      })
       .sort((a, b) => b.avg_salary - a.avg_salary)
-      .slice(0, 15)
-      .map((d) => ({
-        occupation: d.occupation,
-        avg_salary: d.avg_salary,
-      }));
+      .slice(0, 15);
   }, [salaryBenchmark]);
 
   // 最低賃金推移（折れ線グラフ用）
   const wageHistoryChartData = useMemo(() => {
     if (!wageHistory) return [];
     return [...wageHistory]
-      .sort((a, b) => a.fiscal_year - b.fiscal_year)
+      .filter((d) => d.fiscal_year != null && d.hourly_min_wage != null)
+      .sort((a, b) => (a.fiscal_year ?? 0) - (b.fiscal_year ?? 0))
       .map((d) => ({
         year: String(d.fiscal_year),
-        min_wage: d.min_wage,
+        min_wage: d.hourly_min_wage ?? 0,
       }));
   }, [wageHistory]);
 

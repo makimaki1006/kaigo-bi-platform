@@ -128,21 +128,24 @@ function WorkforceContent() {
   const jobOpeningsChartData = useMemo(() => {
     if (!jobOpeningsData) return [];
     return [...jobOpeningsData]
-      .sort((a, b) => a.fiscal_year - b.fiscal_year)
+      .filter((d) => d.fiscal_year != null)
+      .sort((a, b) => String(a.fiscal_year).localeCompare(String(b.fiscal_year)))
       .map((d) => ({
         year: String(d.fiscal_year),
-        job_openings_ratio: d.job_openings_ratio,
+        job_openings_ratio: d.ratio_total ?? 0,
       }));
   }, [jobOpeningsData]);
 
   // 労働市場トレンド（折れ線グラフ用）
+  // separation_rate（離職率）を使用
   const laborTrendsChartData = useMemo(() => {
     if (!laborTrendsData) return [];
     return [...laborTrendsData]
-      .sort((a, b) => a.fiscal_year - b.fiscal_year)
+      .filter((d) => d.fiscal_year != null && d.separation_rate != null)
+      .sort((a, b) => String(a.fiscal_year).localeCompare(String(b.fiscal_year)))
       .map((d) => ({
         year: String(d.fiscal_year),
-        turnover_rate: Math.round(d.turnover_rate * 1000) / 10,
+        turnover_rate: Math.round((d.separation_rate ?? 0) * 1000) / 10,
       }));
   }, [laborTrendsData]);
 

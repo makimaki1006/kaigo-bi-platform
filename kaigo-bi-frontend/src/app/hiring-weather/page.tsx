@@ -218,16 +218,17 @@ function HiringWeatherContent() {
     return { avgScore, avgTurnover, hardest, easiest };
   }, [rows]);
 
-  // 欠員率データ（職種別棒グラフ用）
+  // 欠員率データ（業種x雇用形態別棒グラフ用）
   const vacancyChartData = useMemo(() => {
     if (!vacancyData) return [];
     return [...vacancyData]
-      .sort((a, b) => b.vacancy_rate - a.vacancy_rate)
+      .filter((d) => d.vacancy_rate != null)
+      .sort((a, b) => (b.vacancy_rate ?? 0) - (a.vacancy_rate ?? 0))
       .slice(0, 15)
       .map((d) => ({
-        label: `${d.occupation}（${d.prefecture}）`,
-        vacancy_rate: Math.round(d.vacancy_rate * 1000) / 10,
-        fill_rate: Math.round(d.fill_rate * 1000) / 10,
+        label: `${d.industry_major_code}(${d.emp_group}) - ${d.prefecture}`,
+        vacancy_rate: Math.round((d.vacancy_rate ?? 0) * 1000) / 10,
+        fill_rate: Math.round((1 - (d.vacancy_rate ?? 0)) * 1000) / 10,
       }));
   }, [vacancyData]);
 
