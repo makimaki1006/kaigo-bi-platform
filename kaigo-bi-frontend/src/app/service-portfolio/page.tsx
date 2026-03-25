@@ -8,6 +8,7 @@
 
 import { Suspense, useMemo, useState } from "react";
 import { useApi } from "@/hooks/useApi";
+import { SERVICE_TYPES } from "@/lib/constants";
 import KpiCard from "@/components/data-display/KpiCard";
 import KpiCardGrid from "@/components/data-display/KpiCardGrid";
 import DataTable from "@/components/data-display/DataTable";
@@ -199,7 +200,7 @@ function ServicePortfolioContent() {
     return data.service_combinations
       .slice(0, 20)
       .map((c) => ({
-        service_names_joined: c.service_names.join(" + "),
+        service_names_joined: c.service_names.map((n: string) => SERVICE_TYPES[n] || n).join(" + "),
         count: c.count,
       }));
   }, [data]);
@@ -224,16 +225,9 @@ function ServicePortfolioContent() {
   // 共起テーブルデータ
   const cooccurrenceRows = useMemo(() => {
     if (!data?.service_cooccurrence) return [];
-    // サービスコード→サービス名に変換
-    const codeToName: Record<string, string> = {
-      "110": "訪問介護", "120": "訪問入浴介護", "130": "訪問看護",
-      "140": "訪問リハビリ", "150": "通所介護", "160": "通所リハビリ",
-      "170": "福祉用具貸与", "210": "短期入所生活介護", "220": "短期入所療養介護(老健)",
-      "230": "短期入所療養介護(病院)", "320": "認知症対応型共同生活介護",
-    };
     return data.service_cooccurrence.map((c) => ({
-      service_a: codeToName[c.service_a] || c.service_a,
-      service_b: codeToName[c.service_b] || c.service_b,
+      service_a: SERVICE_TYPES[c.service_a] || c.service_a,
+      service_b: SERVICE_TYPES[c.service_b] || c.service_b,
       cooccurrence_count: c.cooccurrence_count,
       pct_of_a: c.pct_of_a,
       pct_of_b: c.pct_of_b,
