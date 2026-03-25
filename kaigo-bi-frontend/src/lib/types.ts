@@ -998,6 +998,52 @@ export interface ExternalVacancyStats {
 }
 
 // ===================================================
+// kihon delta: 職種別人数・資格・夜勤・認知症研修・全加算
+// ===================================================
+
+/** 職種別従業者構成（/api/workforce/staff-breakdown） */
+export interface StaffBreakdown {
+  job_type: string;
+  avg_count: number | null;
+  total_count: number;
+  facility_count: number;
+  fulltime_ratio: number | null;
+}
+
+/** 資格保有者数（/api/workforce/qualifications） */
+export interface QualificationStats {
+  qualification: string;
+  total: number;
+  avg_per_facility: number | null;
+  facility_count: number;
+}
+
+/** 認知症研修修了者（/api/workforce/dementia-training） */
+export interface DementiaTraining {
+  training: string;
+  total: number;
+  avg_per_facility: number | null;
+  facility_count: number;
+}
+
+/** 夜勤体制（/api/workforce/night-shift） */
+export interface NightShiftData {
+  [key: string]: {
+    avg: number;
+    facility_count: number;
+  };
+}
+
+/** 全加算項目（/api/revenue/kasan-all-items） */
+export interface KasanAllItem {
+  name: string;
+  rate: number;
+  count: number;
+  total: number;
+  service_codes: string[];
+}
+
+// ===================================================
 // チャートコンポーネント共通型
 // ===================================================
 

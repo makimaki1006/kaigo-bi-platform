@@ -200,6 +200,19 @@ def preprocess(df):
         "利用者総数", "定員",
         "要介護1", "要介護2", "要介護3", "要介護4", "要介護5",
         "turnover_rate", "fulltime_ratio", "years_in_business",
+        # deltaスクレイピング: 職種別従業者（6職種×常勤/非常勤/合計）
+        "介護職員_常勤", "介護職員_非常勤", "介護職員_合計",
+        "看護職員_常勤", "看護職員_非常勤", "看護職員_合計",
+        "生活相談員_常勤", "生活相談員_非常勤", "生活相談員_合計",
+        "機能訓練指導員_常勤", "機能訓練指導員_非常勤", "機能訓練指導員_合計",
+        "管理栄養士_常勤", "管理栄養士_非常勤", "管理栄養士_合計",
+        "事務員_常勤", "事務員_非常勤", "事務員_合計",
+        # deltaスクレイピング: 資格保有者数
+        "介護福祉士数", "実務者研修数", "初任者研修数", "介護支援専門員数",
+        # deltaスクレイピング: 夜勤・宿直
+        "夜勤人数", "宿直人数",
+        # deltaスクレイピング: 認知症研修
+        "認知症指導者研修数", "認知症リーダー研修数", "認知症実践者研修数",
     ]
     for col in numeric_cols:
         if col in df.columns:
@@ -613,6 +626,145 @@ def agg_kasan_detail_rates(df):
             "service_codes": sorted(stats["service_codes"]),
         })
 
+    return result
+
+
+def agg_workforce_staff_breakdown(df):
+    """workforce_staff_breakdown: 職種別従業者の内訳（常勤/非常勤/合計、常勤比率）"""
+    job_types = ["介護職員", "看護職員", "生活相談員", "機能訓練指導員", "管理栄養士", "事務員"]
+    result = []
+    for jt in job_types:
+        ft_col = f"{jt}_常勤"
+        pt_col = f"{jt}_非常勤"
+        total_col = f"{jt}_合計"
+        if total_col not in df.columns:
+            continue
+        vals = df[total_col].dropna()
+        vals = vals[vals > 0]
+        if len(vals) == 0:
+            continue
+
+        # 常勤比率: 常勤合計 / 合計合計
+        fulltime_ratio = None
+        if ft_col in df.columns:
+            ft_sum = df[ft_col].dropna().sum()
+            total_sum = df[total_col].dropna().sum()
+            if total_sum > 0:
+                fulltime_ratio = round_safe(ft_sum / total_sum)
+
+        result.append({
+            "job_type": jt,
+            "avg_count": round_safe(vals.mean(), 2),
+            "total_count": int(vals.sum()),
+            "facility_count": len(vals),
+            "fulltime_ratio": fulltime_ratio,
+        })
+    return result
+
+
+def agg_workforce_qualifications(df):
+    """workforce_qualifications: 資格保有者数の集計"""
+    quals = ["介護福祉士数", "実務者研修数", "初任者研修数", "介護支援専門員数"]
+    result = []
+    for q in quals:
+        if q not in df.columns:
+            continue
+        vals = df[q].dropna()
+        vals = vals[vals >= 0]
+        if len(vals) == 0:
+            continue
+        result.append({
+            "qualification": q.replace("数", ""),
+            "total": int(vals.sum()),
+            "avg_per_facility": round_safe(vals.mean(), 2),
+            "facility_count": len(vals),
+        })
+    return result
+
+
+def agg_kasan_all_items(df):
+    """kasan_all_items: 全加算項目の取得率（加算_全項目JSONから集計）"""
+    if "加算_全項目" not in df.columns:
+        return []
+
+    from collections import defaultdict
+    import json as _json
+
+    kasan_counts = defaultdict(lambda: {"true": 0, "total": 0, "services": set()})
+
+    svc_col = "service_code" if "service_code" in df.columns else "サービスコード"
+    positive_values = {"○", "あり", "対応可能", "✓", "✔", "●"}
+
+    kasan_col_idx = df.columns.get_loc("加算_全項目")
+    svc_col_idx = df.columns.get_loc(svc_col) if svc_col in df.columns else None
+
+    for tup in df.itertuples(index=False):
+        raw = tup[kasan_col_idx]
+        if not raw or not isinstance(raw, str) or raw.strip() == "":
+            continue
+        try:
+            kasan_dict = _json.loads(raw)
+        except (ValueError, TypeError):
+            continue
+
+        svc = str(tup[svc_col_idx]) if svc_col_idx is not None else ""
+
+        for name, val in kasan_dict.items():
+            key = name.strip()
+            if not key:
+                continue
+            kasan_counts[key]["total"] += 1
+            kasan_counts[key]["services"].add(svc)
+            if val in positive_values:
+                kasan_counts[key]["true"] += 1
+
+    result = []
+    for name, data in sorted(kasan_counts.items(), key=lambda x: -x[1]["true"]):
+        result.append({
+            "name": name,
+            "rate": round_safe(data["true"] / max(data["total"], 1)),
+            "count": data["true"],
+            "total": data["total"],
+            "service_codes": sorted(data["services"]),
+        })
+    return result
+
+
+def agg_workforce_night_shift(df):
+    """workforce_night_shift: 夜勤・宿直体制の集計"""
+    result = {}
+    for col in ["夜勤人数", "宿直人数"]:
+        if col not in df.columns:
+            continue
+        vals = df[col].dropna()
+        vals = vals[vals > 0]
+        if len(vals) == 0:
+            continue
+        result[col] = {
+            "avg": round_safe(vals.mean(), 2),
+            "facility_count": len(vals),
+            "total": int(vals.sum()),
+        }
+    return result
+
+
+def agg_workforce_dementia_training(df):
+    """workforce_dementia_training: 認知症研修修了者数の集計"""
+    cols = ["認知症指導者研修数", "認知症リーダー研修数", "認知症実践者研修数"]
+    result = []
+    for col in cols:
+        if col not in df.columns:
+            continue
+        vals = df[col].dropna()
+        vals = vals[vals >= 0]
+        if len(vals) == 0:
+            continue
+        result.append({
+            "training": col.replace("数", ""),
+            "total": int(vals.sum()),
+            "avg_per_facility": round_safe(vals.mean(), 2),
+            "facility_count": len(vals),
+        })
     return result
 
 
@@ -1161,11 +1313,16 @@ def main():
         "workforce_by_size": (agg_workforce_by_size, True),
         "workforce_exp_dist": (agg_workforce_exp_dist, True),
         "workforce_exp_turnover": (agg_workforce_exp_turnover, True),
+        "workforce_staff_breakdown": (agg_workforce_staff_breakdown, True),
+        "workforce_qualifications": (agg_workforce_qualifications, True),
+        "workforce_night_shift": (agg_workforce_night_shift, False),
+        "workforce_dementia_training": (agg_workforce_dementia_training, True),
 
         # Revenue
         "revenue_kpi": (agg_revenue_kpi, False),
         "revenue_kasan_rates": (agg_revenue_kasan_rates, True),
         "kasan_detail_rates": (agg_kasan_detail_rates, True),
+        "kasan_all_items": (agg_kasan_all_items, True),
         "revenue_occupancy_dist": (agg_revenue_occupancy_dist, True),
 
         # Salary

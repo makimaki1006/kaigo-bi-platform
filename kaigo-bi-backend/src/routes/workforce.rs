@@ -31,6 +31,10 @@ pub fn router() -> Router<SharedState> {
             "/api/workforce/experience-vs-turnover",
             get(get_experience_vs_turnover),
         )
+        .route("/api/workforce/staff-breakdown", get(get_staff_breakdown))
+        .route("/api/workforce/qualifications", get(get_qualifications))
+        .route("/api/workforce/night-shift", get(get_night_shift))
+        .route("/api/workforce/dementia-training", get(get_dementia_training))
 }
 
 /// GET /api/workforce/kpi
@@ -115,4 +119,56 @@ async fn get_experience_vs_turnover(
     }
     let result = sql_aggregator::workforce_experience_vs_turnover(&state.db, &params).await?;
     Ok(Json(result))
+}
+
+/// GET /api/workforce/staff-breakdown
+async fn get_staff_breakdown(
+    State(state): State<SharedState>,
+    Query(params): Query<FilterParams>,
+) -> Result<Json<Value>, AppError> {
+    if params.is_default() {
+        if let Some(cached) = state.cache_store.get_global("workforce_staff_breakdown") {
+            return Ok(Json(cached.clone()));
+        }
+    }
+    Ok(Json(serde_json::json!([])))
+}
+
+/// GET /api/workforce/qualifications
+async fn get_qualifications(
+    State(state): State<SharedState>,
+    Query(params): Query<FilterParams>,
+) -> Result<Json<Value>, AppError> {
+    if params.is_default() {
+        if let Some(cached) = state.cache_store.get_global("workforce_qualifications") {
+            return Ok(Json(cached.clone()));
+        }
+    }
+    Ok(Json(serde_json::json!([])))
+}
+
+/// GET /api/workforce/night-shift
+async fn get_night_shift(
+    State(state): State<SharedState>,
+    Query(params): Query<FilterParams>,
+) -> Result<Json<Value>, AppError> {
+    if params.is_default() {
+        if let Some(cached) = state.cache_store.get_global("workforce_night_shift") {
+            return Ok(Json(cached.clone()));
+        }
+    }
+    Ok(Json(serde_json::json!({})))
+}
+
+/// GET /api/workforce/dementia-training
+async fn get_dementia_training(
+    State(state): State<SharedState>,
+    Query(params): Query<FilterParams>,
+) -> Result<Json<Value>, AppError> {
+    if params.is_default() {
+        if let Some(cached) = state.cache_store.get_global("workforce_dementia_training") {
+            return Ok(Json(cached.clone()));
+        }
+    }
+    Ok(Json(serde_json::json!([])))
 }

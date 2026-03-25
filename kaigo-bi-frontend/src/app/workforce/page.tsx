@@ -20,6 +20,9 @@ import type {
   ExperienceTurnoverPoint,
   ExternalJobOpenings,
   ExternalLaborTrend,
+  StaffBreakdown,
+  QualificationStats,
+  DementiaTraining,
 } from "@/lib/types";
 import KpiCard from "@/components/data-display/KpiCard";
 import KpiCardGrid from "@/components/data-display/KpiCardGrid";
@@ -109,6 +112,24 @@ function WorkforceContent() {
   // 経験者割合 vs 離職率散布図
   const { data: expTurnoverData, error: expTurnoverError, isLoading: expTurnoverLoading } = useApi<ExperienceTurnoverPoint[]>(
     "/api/workforce/experience-vs-turnover",
+    apiParams
+  );
+
+  // kihon delta: 職種別従業者構成
+  const { data: staffBreakdown, isLoading: staffBreakdownLoading } = useApi<StaffBreakdown[]>(
+    "/api/workforce/staff-breakdown",
+    apiParams
+  );
+
+  // kihon delta: 資格保有者数
+  const { data: qualifications, isLoading: qualificationsLoading } = useApi<QualificationStats[]>(
+    "/api/workforce/qualifications",
+    apiParams
+  );
+
+  // kihon delta: 認知症研修修了者
+  const { data: dementia, isLoading: dementiaLoading } = useApi<DementiaTraining[]>(
+    "/api/workforce/dementia-training",
     apiParams
   );
 
@@ -474,6 +495,102 @@ function WorkforceContent() {
             <UnavailableNotice message={serviceConfig.reason("experience_ratio") || serviceConfig.reason("avg_turnover")} />
           </ChartCard>
         )}
+      </div>
+
+      {/* kihon delta: 職種別従業者構成・資格・認知症研修 */}
+      <div className="border-t border-gray-200 pt-6 mt-2">
+        <h2 className="text-lg font-semibold text-gray-800 mb-1">従業者詳細分析</h2>
+        <p className="text-sm text-gray-500 mb-4">
+          介護情報公表システム（基本情報）から取得した職種別人数・資格・研修データ
+        </p>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* 職種別従業者構成（常勤/非常勤比率） */}
+        <ChartCard
+          title="職種別従業者構成"
+          subtitle="主要職種の常勤/非常勤比率"
+          loading={staffBreakdownLoading}
+          className="lg:col-span-2"
+        >
+          {staffBreakdown && staffBreakdown.length > 0 ? (
+            <StackedBarChart
+              data={staffBreakdown.map((d) => ({
+                job_type: d.job_type,
+                fulltime_pct: Math.round((d.fulltime_ratio ?? 0) * 1000) / 10,
+                parttime_pct: Math.round((1 - (d.fulltime_ratio ?? 0)) * 1000) / 10,
+              }))}
+              xKey="job_type"
+              series={[
+                { dataKey: "fulltime_pct", name: "常勤 (%)", color: CHART_COLORS[0] },
+                { dataKey: "parttime_pct", name: "非常勤 (%)", color: "#a5b4fc" },
+              ]}
+              height={340}
+            />
+          ) : (
+            <DataPendingPlaceholder
+              message="職種別従業者データ準備中"
+              description="kihonデータ統合後に表示されます"
+              height={340}
+            />
+          )}
+        </ChartCard>
+
+        {/* 資格保有者数 */}
+        <ChartCard
+          title="資格保有者数"
+          subtitle="施設平均（1施設あたり）"
+          loading={qualificationsLoading}
+        >
+          {qualifications && qualifications.length > 0 ? (
+            <BarChart
+              data={qualifications.map((d) => ({
+                qualification: d.qualification,
+                avg_per_facility: Math.round((d.avg_per_facility ?? 0) * 10) / 10,
+              }))}
+              xKey="qualification"
+              yKey="avg_per_facility"
+              color={CHART_COLORS[1]}
+              horizontal
+              tooltipFormatter={(v) => `${v.toFixed(1)}人`}
+              height={Math.max(300, qualifications.length * 28)}
+            />
+          ) : (
+            <DataPendingPlaceholder
+              message="資格保有者データ準備中"
+              description="kihonデータ統合後に表示されます"
+              height={300}
+            />
+          )}
+        </ChartCard>
+
+        {/* 認知症研修修了者 */}
+        <ChartCard
+          title="認知症研修修了者"
+          subtitle="施設平均（1施設あたり）"
+          loading={dementiaLoading}
+        >
+          {dementia && dementia.length > 0 ? (
+            <BarChart
+              data={dementia.map((d) => ({
+                training: d.training,
+                avg_per_facility: Math.round((d.avg_per_facility ?? 0) * 10) / 10,
+              }))}
+              xKey="training"
+              yKey="avg_per_facility"
+              color={CHART_COLORS[3]}
+              horizontal
+              tooltipFormatter={(v) => `${v.toFixed(1)}人`}
+              height={Math.max(300, dementia.length * 28)}
+            />
+          ) : (
+            <DataPendingPlaceholder
+              message="認知症研修データ準備中"
+              description="kihonデータ統合後に表示されます"
+              height={300}
+            />
+          )}
+        </ChartCard>
       </div>
 
       {/* 外部統計: 労働市場データ */}

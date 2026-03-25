@@ -19,6 +19,7 @@ pub fn router() -> Router<SharedState> {
             "/api/revenue/occupancy-distribution",
             get(get_occupancy_distribution),
         )
+        .route("/api/revenue/kasan-all-items", get(get_kasan_all_items))
 }
 
 /// GET /api/revenue/kpi
@@ -61,4 +62,17 @@ async fn get_occupancy_distribution(
     }
     let result = sql_aggregator::revenue_occupancy_distribution(&state.db, &params).await?;
     Ok(Json(result))
+}
+
+/// GET /api/revenue/kasan-all-items
+async fn get_kasan_all_items(
+    State(state): State<SharedState>,
+    Query(params): Query<FilterParams>,
+) -> Result<Json<Value>, AppError> {
+    if params.is_default() {
+        if let Some(cached) = state.cache_store.get_global("kasan_all_items") {
+            return Ok(Json(cached.clone()));
+        }
+    }
+    Ok(Json(serde_json::json!([])))
 }

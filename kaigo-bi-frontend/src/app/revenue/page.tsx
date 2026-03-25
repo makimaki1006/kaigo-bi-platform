@@ -10,7 +10,7 @@ import { Suspense, useState, useMemo, useCallback } from "react";
 import { useApi } from "@/hooks/useApi";
 import { useFilters } from "@/hooks/useFilters";
 import { useServiceConfig } from "@/lib/service-config";
-import type { RevenueKpi, BonusItemRate, OccupancyBin } from "@/lib/types";
+import type { RevenueKpi, BonusItemRate, OccupancyBin, KasanAllItem } from "@/lib/types";
 import { KASAN_LABELS } from "@/lib/types";
 import KpiCard from "@/components/data-display/KpiCard";
 import KpiCardGrid from "@/components/data-display/KpiCardGrid";
@@ -99,7 +99,13 @@ function RevenueContent() {
     apiParams
   );
 
-  const apiError = kpiError || kasanError || occupancyError;
+  // 全加算項目取得率ランキング
+  const { data: allKasan, error: allKasanError, isLoading: allKasanLoading } = useApi<KasanAllItem[]>(
+    "/api/revenue/kasan-all-items",
+    apiParams
+  );
+
+  const apiError = kpiError || kasanError || occupancyError || allKasanError;
 
   // 加算取得シミュレーター状態
   const [selectedKasan, setSelectedKasan] = useState<Set<string>>(new Set());
@@ -300,6 +306,36 @@ function RevenueContent() {
           </ChartCard>
         )}
       </div>
+
+      {/* 全加算項目 取得率ランキング（Top 30） */}
+      <ChartCard
+        title="全加算項目 取得率ランキング"
+        subtitle="介護情報公表システム 全加算の取得状況（Top 30）"
+        loading={allKasanLoading}
+      >
+        {allKasan && allKasan.length > 0 ? (
+          <BarChart
+            data={allKasan
+              .slice(0, 30)
+              .map((d) => ({
+                name: d.name,
+                rate_pct: Math.round(d.rate * 1000) / 10,
+              }))}
+            xKey="name"
+            yKey="rate_pct"
+            color={CHART_COLORS[0]}
+            horizontal
+            tooltipFormatter={(v) => `${v.toFixed(1)}%`}
+            height={Math.max(500, Math.min(allKasan.length, 30) * 28)}
+          />
+        ) : (
+          <DataPendingPlaceholder
+            message="全加算項目データ準備中"
+            description="kihonデータ統合後に表示されます"
+            height={400}
+          />
+        )}
+      </ChartCard>
 
       {/* 加算取得シミュレーター */}
       <ChartCard
