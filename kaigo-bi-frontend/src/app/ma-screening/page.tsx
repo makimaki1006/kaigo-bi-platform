@@ -268,8 +268,8 @@ function MaScreeningContent() {
       {/* メインレイアウト: 左フィルタ + 右コンテンツ */}
       <div className="flex flex-col lg:flex-row gap-6 overflow-hidden">
         {/* 左: 拡張フィルタパネル（モバイルでは全幅、lgで固定幅） */}
-        <div className="w-full lg:w-72 lg:flex-shrink-0">
-          <Card className="lg:sticky lg:top-20 !border-brand-200 !ring-1 !ring-brand-100">
+        <div className="w-full lg:w-72 lg:flex-shrink-0 overflow-hidden">
+          <Card className="lg:sticky lg:top-20 !border-brand-200 !ring-1 !ring-brand-100 overflow-hidden">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-sm font-semibold text-brand-800">
                 スクリーニング条件

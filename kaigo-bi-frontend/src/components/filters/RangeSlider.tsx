@@ -2,27 +2,17 @@
 
 // ===================================================
 // 数値レンジ入力コンポーネント
-// min/max の数値入力フィールド
+// min/max の数値入力フィールド（ネイティブinput使用）
 // ===================================================
 
-import { NumberInput } from "@tremor/react";
-
 interface RangeSliderProps {
-  /** ラベル */
   label: string;
-  /** 最小値 */
   minValue: number | null;
-  /** 最大値 */
   maxValue: number | null;
-  /** 最小値変更コールバック */
   onMinChange: (value: number | null) => void;
-  /** 最大値変更コールバック */
   onMaxChange: (value: number | null) => void;
-  /** プレースホルダー（最小） */
   minPlaceholder?: string;
-  /** プレースホルダー（最大） */
   maxPlaceholder?: string;
-  /** コンパクトモード */
   compact?: boolean;
 }
 
@@ -43,21 +33,23 @@ export default function RangeSlider({
           {label}
         </label>
       )}
-      <div className="flex items-center gap-2">
-        <NumberInput
-          value={minValue ?? undefined}
-          onValueChange={(v) => onMinChange(v !== undefined ? v : null)}
+      <div className="flex items-center gap-1">
+        <input
+          type="number"
+          value={minValue ?? ""}
+          onChange={(e) => onMinChange(e.target.value ? Number(e.target.value) : null)}
           placeholder={minPlaceholder}
           min={0}
-          enableStepper={false}
+          className="w-full min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
         />
-        <span className="text-gray-400 text-sm flex-shrink-0">~</span>
-        <NumberInput
-          value={maxValue ?? undefined}
-          onValueChange={(v) => onMaxChange(v !== undefined ? v : null)}
+        <span className="text-gray-400 text-xs flex-shrink-0">~</span>
+        <input
+          type="number"
+          value={maxValue ?? ""}
+          onChange={(e) => onMaxChange(e.target.value ? Number(e.target.value) : null)}
           placeholder={maxPlaceholder}
           min={0}
-          enableStepper={false}
+          className="w-full min-w-0 rounded-md border border-gray-300 px-2 py-1.5 text-sm text-gray-700 placeholder-gray-400 focus:border-brand-500 focus:ring-1 focus:ring-brand-500 outline-none"
         />
       </div>
     </div>
