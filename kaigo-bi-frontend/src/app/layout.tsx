@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import "./globals.css";
 import { AuthProvider } from "@/components/auth/AuthProvider";
 import AppShell from "@/components/layout/AppShell";
+import ErrorBoundary from "@/components/common/ErrorBoundary";
 
 export const metadata: Metadata = {
   title: "介護BI - 戦略コンサルティング",
@@ -25,10 +26,13 @@ export default function RootLayout({
               </div>
             }
           >
-            <AppShell>{children}</AppShell>
+            <ErrorBoundary>
+              <AppShell>{children}</AppShell>
+            </ErrorBoundary>
           </Suspense>
         </AuthProvider>
       </body>
     </html>
   );
 }
+

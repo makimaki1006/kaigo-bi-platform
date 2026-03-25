@@ -16,6 +16,7 @@ import {
   Legend,
 } from "recharts";
 import { CHART_COLORS } from "@/lib/constants";
+import type { ChartDataPoint } from "@/lib/types";
 
 interface StackedBarSeries {
   /** データキー */
@@ -28,7 +29,7 @@ interface StackedBarSeries {
 
 interface StackedBarChartProps {
   /** チャートデータ */
-  data: any[];
+  data: ChartDataPoint[];
   /** X軸（カテゴリ）のキー */
   xKey: string;
   /** データ系列の定義 */

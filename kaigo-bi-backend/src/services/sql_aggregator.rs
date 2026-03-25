@@ -9,69 +9,99 @@ use serde_json::{json, Value};
 use crate::error::AppError;
 use crate::models::filters::{FilterParams, SearchParams};
 
-/// WHERE句とパラメータを構築するヘルパー
+/// WHERE句とパラメータを構築するヘルパー（パラメタライズドクエリ対応）
 struct WhereBuilder {
     conditions: Vec<String>,
-    // libsqlはnamed/positionalパラメータの動的構築が難しいため、
-    // SQL文字列にリテラルを直接埋め込む（SQLインジェクション対策として値をサニタイズ）
+    params: Vec<libsql::Value>,
+    param_counter: usize,
 }
 
 impl WhereBuilder {
     fn new() -> Self {
         Self {
             conditions: Vec::new(),
+            params: Vec::new(),
+            param_counter: 0,
         }
     }
 
-    /// フィルタパラメータからWHERE句を構築
+    /// 次のパラメータプレースホルダ番号を取得してインクリメント
+    fn next_param(&mut self) -> usize {
+        self.param_counter += 1;
+        self.param_counter
+    }
+
+    /// フィルタパラメータからWHERE句を構築（パラメタライズドクエリ）
     fn from_filter_params(params: &FilterParams) -> Self {
         let mut builder = Self::new();
 
         if let Some(ref pref) = params.prefecture {
             let prefs: Vec<&str> = pref.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
             if !prefs.is_empty() {
-                let escaped: Vec<String> = prefs.iter().map(|s| format!("'{}'", sanitize_sql(s))).collect();
-                builder.conditions.push(format!("prefecture IN ({})", escaped.join(",")));
+                let placeholders: Vec<String> = prefs.iter().map(|p| {
+                    let idx = builder.next_param();
+                    builder.params.push(libsql::Value::Text(p.to_string()));
+                    format!("?{}", idx)
+                }).collect();
+                builder.conditions.push(format!("prefecture IN ({})", placeholders.join(",")));
             }
         }
 
         if let Some(ref sc) = params.service_code {
             let codes: Vec<&str> = sc.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
             if !codes.is_empty() {
-                let escaped: Vec<String> = codes.iter().map(|s| format!("'{}'", sanitize_sql(s))).collect();
-                builder.conditions.push(format!("\"サービスコード\" IN ({})", escaped.join(",")));
+                let placeholders: Vec<String> = codes.iter().map(|c| {
+                    let idx = builder.next_param();
+                    builder.params.push(libsql::Value::Text(c.to_string()));
+                    format!("?{}", idx)
+                }).collect();
+                builder.conditions.push(format!("\"サービスコード\" IN ({})", placeholders.join(",")));
             }
         }
 
         if let Some(ref ct) = params.corp_type {
             let types: Vec<&str> = ct.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
             if !types.is_empty() {
-                let escaped: Vec<String> = types.iter().map(|s| format!("'{}'", sanitize_sql(s))).collect();
-                builder.conditions.push(format!("corp_type IN ({})", escaped.join(",")));
+                let placeholders: Vec<String> = types.iter().map(|t| {
+                    let idx = builder.next_param();
+                    builder.params.push(libsql::Value::Text(t.to_string()));
+                    format!("?{}", idx)
+                }).collect();
+                builder.conditions.push(format!("corp_type IN ({})", placeholders.join(",")));
             }
         }
 
         if let Some(min) = params.staff_min {
+            let idx = builder.next_param();
+            builder.params.push(libsql::Value::Real(min));
             builder.conditions.push(format!(
-                "CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) >= {}",
-                min
+                "CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) >= ?{}",
+                idx
             ));
         }
 
         if let Some(max) = params.staff_max {
+            let idx = builder.next_param();
+            builder.params.push(libsql::Value::Real(max));
             builder.conditions.push(format!(
-                "CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) <= {}",
-                max
+                "CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) <= ?{}",
+                idx
             ));
         }
 
         if let Some(ref kw) = params.keyword {
             let kw = kw.trim();
             if !kw.is_empty() {
-                let escaped = sanitize_sql(kw);
+                let like_val = format!("%{}%", kw);
+                let idx1 = builder.next_param();
+                builder.params.push(libsql::Value::Text(like_val.clone()));
+                let idx2 = builder.next_param();
+                builder.params.push(libsql::Value::Text(like_val.clone()));
+                let idx3 = builder.next_param();
+                builder.params.push(libsql::Value::Text(like_val));
                 builder.conditions.push(format!(
-                    "(\"住所\" LIKE '%{}%' OR \"事業所名\" LIKE '%{}%' OR municipality LIKE '%{}%')",
-                    escaped, escaped, escaped
+                    "(\"住所\" LIKE ?{} OR \"事業所名\" LIKE ?{} OR municipality LIKE ?{})",
+                    idx1, idx2, idx3
                 ));
             }
         }
@@ -87,11 +117,53 @@ impl WhereBuilder {
             format!("WHERE {}", self.conditions.join(" AND "))
         }
     }
-}
 
-/// SQLインジェクション対策: シングルクォートをエスケープ
-fn sanitize_sql(input: &str) -> String {
-    input.replace('\'', "''")
+    /// パラメータをlibsql::Value のVecとして返す
+    fn into_params(self) -> Vec<libsql::Value> {
+        self.params
+    }
+
+    /// パラメータの参照を返す（パラメータを消費しない）
+    fn params_ref(&self) -> &[libsql::Value] {
+        &self.params
+    }
+
+    /// パラメータをクローンして返す（複数回のクエリ実行用）
+    fn clone_params(&self) -> Vec<libsql::Value> {
+        self.params.clone()
+    }
+
+    /// 追加のLIKEパラメータを付与して新しいパラメータVecを返す
+    fn params_with_like(&self, like_val: &str) -> (Vec<libsql::Value>, usize, usize, usize) {
+        let mut params = self.params.clone();
+        let idx1 = params.len() + 1;
+        params.push(libsql::Value::Text(like_val.to_string()));
+        let idx2 = params.len() + 1;
+        params.push(libsql::Value::Text(like_val.to_string()));
+        let idx3 = params.len() + 1;
+        params.push(libsql::Value::Text(like_val.to_string()));
+        (params, idx1, idx2, idx3)
+    }
+
+    /// 追加のテキストパラメータを付与して新しいパラメータVecを返す
+    fn params_with_text(&self, val: &str) -> (Vec<libsql::Value>, usize) {
+        let mut params = self.params.clone();
+        let idx = params.len() + 1;
+        params.push(libsql::Value::Text(val.to_string()));
+        (params, idx)
+    }
+
+    /// 複数のテキストパラメータを追加
+    fn params_with_texts(&self, vals: &[&str]) -> (Vec<libsql::Value>, Vec<usize>) {
+        let mut params = self.params.clone();
+        let mut indices = Vec::new();
+        for val in vals {
+            let idx = params.len() + 1;
+            params.push(libsql::Value::Text(val.to_string()));
+            indices.push(idx);
+        }
+        (params, indices)
+    }
 }
 
 /// Turso接続を取得するヘルパー
@@ -99,10 +171,10 @@ async fn get_conn(db: &Database) -> Result<libsql::Connection, AppError> {
     db.connect().map_err(|e| AppError::Internal(format!("Turso接続エラー: {}", e)))
 }
 
-/// 単一行クエリを実行してJSON Valueを返す
-async fn query_single_row(conn: &libsql::Connection, sql: &str) -> Result<libsql::Row, AppError> {
+/// パラメタライズドクエリで単一行を取得
+async fn query_single_row_params(conn: &libsql::Connection, sql: &str, params: Vec<libsql::Value>) -> Result<libsql::Row, AppError> {
     let mut rows = conn
-        .query(sql, ())
+        .query(sql, params)
         .await
         .map_err(|e| AppError::Internal(format!("SQLクエリエラー: {}\nSQL: {}", e, sql)))?;
 
@@ -113,10 +185,10 @@ async fn query_single_row(conn: &libsql::Connection, sql: &str) -> Result<libsql
     }
 }
 
-/// 複数行クエリを実行してRowのVecを返す
-async fn query_rows(conn: &libsql::Connection, sql: &str) -> Result<Vec<libsql::Row>, AppError> {
+/// パラメタライズドクエリで複数行を取得
+async fn query_rows_params(conn: &libsql::Connection, sql: &str, params: Vec<libsql::Value>) -> Result<Vec<libsql::Row>, AppError> {
     let mut rows = conn
-        .query(sql, ())
+        .query(sql, params)
         .await
         .map_err(|e| AppError::Internal(format!("SQLクエリエラー: {}\nSQL: {}", e, sql)))?;
 
@@ -182,7 +254,7 @@ pub async fn dashboard_kpi(db: &Database, params: &FilterParams) -> Result<Value
     );
 
     let conn = get_conn(db).await?;
-    let row = query_single_row(&conn, &sql).await?;
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
 
     Ok(json!({
         "total_facilities": row_i64(&row, 0),
@@ -199,26 +271,9 @@ pub async fn dashboard_by_prefecture(db: &Database, params: &FilterParams) -> Re
     let w = WhereBuilder::from_filter_params(params);
     let where_clause = w.to_where_clause();
 
-    let sql = format!(
-        "SELECT
-            prefecture,
-            COUNT(*) as facility_count,
-            AVG(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), NULL) AS REAL)) as avg_staff,
-            AVG(CASE WHEN CAST(COALESCE(NULLIF(\"定員\", ''), NULL) AS REAL) BETWEEN 1 AND 500
-                THEN CAST(\"定員\" AS REAL) END) as avg_capacity,
-            AVG(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END) as avg_turnover
-        FROM facilities {}
-        WHERE prefecture IS NOT NULL AND prefecture != ''
-        GROUP BY prefecture
-        ORDER BY facility_count DESC",
-        // WHERE句の結合: 既存条件がある場合はANDで追加
-        if where_clause.is_empty() { "" } else { &where_clause }
-    );
-
     // WHERE句の適切な結合
     let sql = if where_clause.is_empty() {
-        format!(
-            "SELECT
+        "SELECT
                 prefecture,
                 COUNT(*) as facility_count,
                 AVG(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), NULL) AS REAL)) as avg_staff,
@@ -228,8 +283,7 @@ pub async fn dashboard_by_prefecture(db: &Database, params: &FilterParams) -> Re
             FROM facilities
             WHERE prefecture IS NOT NULL AND prefecture != ''
             GROUP BY prefecture
-            ORDER BY facility_count DESC"
-        )
+            ORDER BY facility_count DESC".to_string()
     } else {
         format!(
             "SELECT
@@ -248,7 +302,7 @@ pub async fn dashboard_by_prefecture(db: &Database, params: &FilterParams) -> Re
     };
 
     let conn = get_conn(db).await?;
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
 
     let results: Vec<Value> = rows.iter().map(|row| {
         json!({
@@ -282,7 +336,7 @@ pub async fn dashboard_by_service(db: &Database, params: &FilterParams) -> Resul
     );
 
     let conn = get_conn(db).await?;
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
 
     let results: Vec<Value> = rows.iter().map(|row| {
         json!({
@@ -321,7 +375,7 @@ pub async fn market_choropleth(db: &Database, params: &FilterParams) -> Result<V
     );
 
     let conn = get_conn(db).await?;
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
 
     let results: Vec<Value> = rows.iter().map(|row| {
         json!({
@@ -355,7 +409,7 @@ pub async fn market_by_service_bar(db: &Database, params: &FilterParams) -> Resu
     );
 
     let conn = get_conn(db).await?;
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
 
     let results: Vec<Value> = rows.iter().map(|row| {
         json!({
@@ -376,7 +430,7 @@ pub async fn market_corp_type_donut(db: &Database, params: &FilterParams) -> Res
     // まず総数を取得
     let count_sql = format!("SELECT COUNT(*) FROM facilities {}", where_clause);
     let conn = get_conn(db).await?;
-    let total_row = query_single_row(&conn, &count_sql).await?;
+    let total_row = query_single_row_params(&conn, &count_sql, w.clone_params()).await?;
     let total = row_i64(&total_row, 0) as f64;
 
     let extra_cond = "corp_type IS NOT NULL AND corp_type != ''";
@@ -389,7 +443,7 @@ pub async fn market_corp_type_donut(db: &Database, params: &FilterParams) -> Res
         "count DESC",
     );
 
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
 
     let results: Vec<Value> = rows.iter().map(|row| {
         let count = row_i64(row, 1);
@@ -426,7 +480,7 @@ pub async fn workforce_kpi(db: &Database, params: &FilterParams) -> Result<Value
     );
 
     let conn = get_conn(db).await?;
-    let row = query_single_row(&conn, &sql).await?;
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
 
     Ok(json!({
         "avg_turnover_rate": row_f64_opt(&row, 0),
@@ -436,36 +490,35 @@ pub async fn workforce_kpi(db: &Database, params: &FilterParams) -> Result<Value
     }))
 }
 
-/// 離職率分布（5%刻みヒストグラム）
+/// 離職率分布（5%刻みヒストグラム）- 単一クエリCASE WHEN方式
 pub async fn workforce_turnover_distribution(db: &Database, params: &FilterParams) -> Result<Value, AppError> {
     let w = WhereBuilder::from_filter_params(params);
     let where_clause = w.to_where_clause();
     let and_prefix = if where_clause.is_empty() { "WHERE" } else { &format!("{} AND", where_clause) };
 
-    let ranges = vec![
-        ("0-5%", 0.0, 0.05),
-        ("5-10%", 0.05, 0.10),
-        ("10-15%", 0.10, 0.15),
-        ("15-20%", 0.15, 0.20),
-        ("20-25%", 0.20, 0.25),
-        ("25-30%", 0.25, 0.30),
-        ("30%以上", 0.30, 999.0),
-    ];
+    let sql = format!(
+        "SELECT
+            SUM(CASE WHEN turnover_rate >= 0 AND turnover_rate < 0.05 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN turnover_rate >= 0.05 AND turnover_rate < 0.10 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN turnover_rate >= 0.10 AND turnover_rate < 0.15 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN turnover_rate >= 0.15 AND turnover_rate < 0.20 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN turnover_rate >= 0.20 AND turnover_rate < 0.25 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN turnover_rate >= 0.25 AND turnover_rate < 0.30 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN turnover_rate >= 0.30 THEN 1 ELSE 0 END)
+        FROM facilities {} turnover_rate IS NOT NULL",
+        and_prefix
+    );
 
     let conn = get_conn(db).await?;
-    let mut results = Vec::new();
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
 
-    for (label, min, max) in &ranges {
-        let sql = format!(
-            "SELECT COUNT(*) FROM facilities {} turnover_rate IS NOT NULL AND turnover_rate >= {} AND turnover_rate < {}",
-            and_prefix, min, max
-        );
-        let row = query_single_row(&conn, &sql).await?;
-        results.push(json!({
+    let labels = ["0-5%", "5-10%", "10-15%", "15-20%", "20-25%", "25-30%", "30%以上"];
+    let results: Vec<Value> = labels.iter().enumerate().map(|(i, label)| {
+        json!({
             "range": label,
-            "count": row_i64(&row, 0),
-        }));
-    }
+            "count": row_i64(&row, i as i32),
+        })
+    }).collect();
 
     Ok(Value::Array(results))
 }
@@ -490,7 +543,7 @@ pub async fn workforce_by_prefecture(db: &Database, params: &FilterParams) -> Re
     );
 
     let conn = get_conn(db).await?;
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
 
     let results: Vec<Value> = rows.iter().map(|row| {
         json!({
@@ -504,76 +557,87 @@ pub async fn workforce_by_prefecture(db: &Database, params: &FilterParams) -> Re
     Ok(Value::Array(results))
 }
 
-/// 従業者規模別離職率
+/// 従業者規模別離職率 - 単一クエリCASE WHEN方式
 pub async fn workforce_by_size(db: &Database, params: &FilterParams) -> Result<Value, AppError> {
     let w = WhereBuilder::from_filter_params(params);
     let where_clause = w.to_where_clause();
     let and_prefix = if where_clause.is_empty() { "WHERE" } else { &format!("{} AND", where_clause) };
 
-    let categories = vec![
-        ("小規模(1-10)", 1.0, 10.0),
-        ("中規模(11-30)", 11.0, 30.0),
-        ("中大規模(31-50)", 31.0, 50.0),
-        ("大規模(51-100)", 51.0, 100.0),
-        ("超大規模(101以上)", 101.0, 999999.0),
-    ];
+    // 各規模カテゴリのCASE WHEN: count, avg_turnover, avg_fulltime を3列ずつ（計15列）
+    let sql = format!(
+        "SELECT
+            SUM(CASE WHEN CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) BETWEEN 1 AND 10 THEN 1 ELSE 0 END),
+            AVG(CASE WHEN CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) BETWEEN 1 AND 10 AND turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END),
+            AVG(CASE WHEN CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) BETWEEN 1 AND 10 AND fulltime_ratio BETWEEN 0.0 AND 1.0 THEN fulltime_ratio END),
+            SUM(CASE WHEN CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) BETWEEN 11 AND 30 THEN 1 ELSE 0 END),
+            AVG(CASE WHEN CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) BETWEEN 11 AND 30 AND turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END),
+            AVG(CASE WHEN CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) BETWEEN 11 AND 30 AND fulltime_ratio BETWEEN 0.0 AND 1.0 THEN fulltime_ratio END),
+            SUM(CASE WHEN CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) BETWEEN 31 AND 50 THEN 1 ELSE 0 END),
+            AVG(CASE WHEN CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) BETWEEN 31 AND 50 AND turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END),
+            AVG(CASE WHEN CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) BETWEEN 31 AND 50 AND fulltime_ratio BETWEEN 0.0 AND 1.0 THEN fulltime_ratio END),
+            SUM(CASE WHEN CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) BETWEEN 51 AND 100 THEN 1 ELSE 0 END),
+            AVG(CASE WHEN CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) BETWEEN 51 AND 100 AND turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END),
+            AVG(CASE WHEN CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) BETWEEN 51 AND 100 AND fulltime_ratio BETWEEN 0.0 AND 1.0 THEN fulltime_ratio END),
+            SUM(CASE WHEN CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) >= 101 THEN 1 ELSE 0 END),
+            AVG(CASE WHEN CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) >= 101 AND turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END),
+            AVG(CASE WHEN CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) >= 101 AND fulltime_ratio BETWEEN 0.0 AND 1.0 THEN fulltime_ratio END)
+        FROM facilities {} CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) >= 1",
+        and_prefix
+    );
 
     let conn = get_conn(db).await?;
-    let mut results = Vec::new();
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
 
-    for (label, min, max) in &categories {
-        let sql = format!(
-            "SELECT
-                COUNT(*) as cnt,
-                AVG(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END) as avg_turnover,
-                AVG(CASE WHEN fulltime_ratio BETWEEN 0.0 AND 1.0 THEN fulltime_ratio END) as avg_fulltime
-            FROM facilities
-            {} CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) >= {}
-            AND CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) <= {}",
-            and_prefix, min, max
-        );
-        let row = query_single_row(&conn, &sql).await?;
-        results.push(json!({
+    let categories = [
+        "小規模(1-10)", "中規模(11-30)", "中大規模(31-50)",
+        "大規模(51-100)", "超大規模(101以上)",
+    ];
+
+    let results: Vec<Value> = categories.iter().enumerate().map(|(i, label)| {
+        let base = (i * 3) as i32;
+        json!({
             "size_category": label,
-            "avg_turnover_rate": row_f64(&row, 1),
-            "avg_fulltime_ratio": row_f64(&row, 2),
-            "count": row_i64(&row, 0),
-        }));
-    }
+            "count": row_i64(&row, base),
+            "avg_turnover_rate": row_f64(&row, base + 1),
+            "avg_fulltime_ratio": row_f64(&row, base + 2),
+        })
+    }).collect();
 
     Ok(Value::Array(results))
 }
 
-/// 経験者割合の分布
+/// 経験者割合の分布 - 単一クエリCASE WHEN方式
 pub async fn workforce_experience_distribution(db: &Database, params: &FilterParams) -> Result<Value, AppError> {
     let w = WhereBuilder::from_filter_params(params);
     let where_clause = w.to_where_clause();
     let and_prefix = if where_clause.is_empty() { "WHERE" } else { &format!("{} AND", where_clause) };
 
-    let ranges = vec![
-        ("0-20%", 0.0, 20.0),
-        ("20-40%", 20.0, 40.0),
-        ("40-60%", 40.0, 60.0),
-        ("60-80%", 60.0, 80.0),
-        ("80-100%", 80.0, 100.01),
-    ];
+    let sql = format!(
+        "SELECT
+            SUM(CASE WHEN CAST(REPLACE(REPLACE(COALESCE(\"経験10年以上割合\", ''), '％', ''), '%%', '') AS REAL) >= 0
+                AND CAST(REPLACE(REPLACE(COALESCE(\"経験10年以上割合\", ''), '％', ''), '%%', '') AS REAL) < 20 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN CAST(REPLACE(REPLACE(COALESCE(\"経験10年以上割合\", ''), '％', ''), '%%', '') AS REAL) >= 20
+                AND CAST(REPLACE(REPLACE(COALESCE(\"経験10年以上割合\", ''), '％', ''), '%%', '') AS REAL) < 40 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN CAST(REPLACE(REPLACE(COALESCE(\"経験10年以上割合\", ''), '％', ''), '%%', '') AS REAL) >= 40
+                AND CAST(REPLACE(REPLACE(COALESCE(\"経験10年以上割合\", ''), '％', ''), '%%', '') AS REAL) < 60 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN CAST(REPLACE(REPLACE(COALESCE(\"経験10年以上割合\", ''), '％', ''), '%%', '') AS REAL) >= 60
+                AND CAST(REPLACE(REPLACE(COALESCE(\"経験10年以上割合\", ''), '％', ''), '%%', '') AS REAL) < 80 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN CAST(REPLACE(REPLACE(COALESCE(\"経験10年以上割合\", ''), '％', ''), '%%', '') AS REAL) >= 80
+                AND CAST(REPLACE(REPLACE(COALESCE(\"経験10年以上割合\", ''), '％', ''), '%%', '') AS REAL) < 100.01 THEN 1 ELSE 0 END)
+        FROM facilities {} \"経験10年以上割合\" IS NOT NULL AND \"経験10年以上割合\" != ''",
+        and_prefix
+    );
 
     let conn = get_conn(db).await?;
-    let mut results = Vec::new();
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
 
-    for (label, min, max) in &ranges {
-        let sql = format!(
-            "SELECT COUNT(*) FROM facilities
-            {} CAST(REPLACE(REPLACE(COALESCE(\"経験10年以上割合\", ''), '％', ''), '%%', '') AS REAL) >= {}
-            AND CAST(REPLACE(REPLACE(COALESCE(\"経験10年以上割合\", ''), '％', ''), '%%', '') AS REAL) < {}",
-            and_prefix, min, max
-        );
-        let row = query_single_row(&conn, &sql).await?;
-        results.push(json!({
+    let labels = ["0-20%", "20-40%", "40-60%", "60-80%", "80-100%"];
+    let results: Vec<Value> = labels.iter().enumerate().map(|(i, label)| {
+        json!({
             "range": label,
-            "count": row_i64(&row, 0),
-        }));
-    }
+            "count": row_i64(&row, i as i32),
+        })
+    }).collect();
 
     Ok(Value::Array(results))
 }
@@ -598,7 +662,7 @@ pub async fn workforce_experience_vs_turnover(db: &Database, params: &FilterPara
     );
 
     let conn = get_conn(db).await?;
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
 
     let results: Vec<Value> = rows.iter().map(|row| {
         json!({
@@ -636,7 +700,7 @@ pub async fn revenue_kpi(db: &Database, params: &FilterParams) -> Result<Value, 
     );
 
     let conn = get_conn(db).await?;
-    let row = query_single_row(&conn, &sql).await?;
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
 
     Ok(json!({
         "avg_kasan_count": row_f64_opt(&row, 0),
@@ -669,67 +733,63 @@ pub async fn revenue_kasan_rates(db: &Database, params: &FilterParams) -> Result
         ("緊急時加算", "加算_緊急時"),
     ];
 
-    let count_sql = format!("SELECT COUNT(*) FROM facilities {}", where_clause);
+    // 単一クエリで全カラムのCOUNTとtotalを取得
+    let kasan_sums: Vec<String> = kasan_cols.iter().map(|(_, col)| {
+        format!("SUM(CASE WHEN \"{}\" = 1 THEN 1 ELSE 0 END)", col)
+    }).collect();
+
+    let sql = format!(
+        "SELECT COUNT(*), {} FROM facilities {}",
+        kasan_sums.join(", "),
+        where_clause
+    );
+
     let conn = get_conn(db).await?;
-    let total_row = query_single_row(&conn, &count_sql).await?;
-    let total = row_i64(&total_row, 0) as f64;
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
+    let total = row_i64(&row, 0) as f64;
 
     let mut results = Vec::new();
-    for (name, col) in &kasan_cols {
-        let sql = format!(
-            "SELECT COUNT(*) FROM facilities {} {} \"{}\" = 1",
-            where_clause,
-            if where_clause.is_empty() { "WHERE" } else { "AND" },
-            col
-        );
-        match query_single_row(&conn, &sql).await {
-            Ok(row) => {
-                let count = row_i64(&row, 0);
-                results.push(json!({
-                    "kasan_name": name,
-                    "rate": if total > 0.0 { count as f64 / total } else { 0.0 },
-                    "count": count,
-                }));
-            }
-            Err(_) => {
-                // カラムが存在しない場合はスキップ
-            }
-        }
+    for (i, (name, _)) in kasan_cols.iter().enumerate() {
+        let count = row_i64(&row, (i + 1) as i32);
+        results.push(json!({
+            "kasan_name": name,
+            "rate": if total > 0.0 { count as f64 / total } else { 0.0 },
+            "count": count,
+        }));
     }
 
     Ok(Value::Array(results))
 }
 
-/// 稼働率分布
+/// 稼働率分布 - 単一クエリCASE WHEN方式
 pub async fn revenue_occupancy_distribution(db: &Database, params: &FilterParams) -> Result<Value, AppError> {
     let w = WhereBuilder::from_filter_params(params);
     let where_clause = w.to_where_clause();
     let and_prefix = if where_clause.is_empty() { "WHERE" } else { &format!("{} AND", where_clause) };
 
-    let ranges = vec![
-        ("0-50%", 0.0, 0.50),
-        ("50-60%", 0.50, 0.60),
-        ("60-70%", 0.60, 0.70),
-        ("70-80%", 0.70, 0.80),
-        ("80-90%", 0.80, 0.90),
-        ("90-100%", 0.90, 1.00),
-        ("100%以上", 1.00, 999.0),
-    ];
+    let sql = format!(
+        "SELECT
+            SUM(CASE WHEN occupancy_rate >= 0 AND occupancy_rate < 0.50 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN occupancy_rate >= 0.50 AND occupancy_rate < 0.60 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN occupancy_rate >= 0.60 AND occupancy_rate < 0.70 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN occupancy_rate >= 0.70 AND occupancy_rate < 0.80 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN occupancy_rate >= 0.80 AND occupancy_rate < 0.90 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN occupancy_rate >= 0.90 AND occupancy_rate < 1.00 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN occupancy_rate >= 1.00 THEN 1 ELSE 0 END)
+        FROM facilities {} occupancy_rate IS NOT NULL",
+        and_prefix
+    );
 
     let conn = get_conn(db).await?;
-    let mut results = Vec::new();
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
 
-    for (label, min, max) in &ranges {
-        let sql = format!(
-            "SELECT COUNT(*) FROM facilities {} occupancy_rate IS NOT NULL AND occupancy_rate >= {} AND occupancy_rate < {}",
-            and_prefix, min, max
-        );
-        let row = query_single_row(&conn, &sql).await?;
-        results.push(json!({
+    let labels = ["0-50%", "50-60%", "60-70%", "70-80%", "80-90%", "90-100%", "100%以上"];
+    let results: Vec<Value> = labels.iter().enumerate().map(|(i, label)| {
+        json!({
             "range": label,
-            "count": row_i64(&row, 0),
-        }));
-    }
+            "count": row_i64(&row, i as i32),
+        })
+    }).collect();
 
     Ok(Value::Array(results))
 }
@@ -755,7 +815,7 @@ pub async fn salary_kpi(db: &Database, params: &FilterParams) -> Result<Value, A
     );
 
     let conn = get_conn(db).await?;
-    let row = query_single_row(&conn, &sql).await?;
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
 
     Ok(json!({
         "avg_salary": row_f64_opt(&row, 0),
@@ -786,7 +846,7 @@ pub async fn salary_by_job_type(db: &Database, params: &FilterParams) -> Result<
     );
 
     let conn = get_conn(db).await?;
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
 
     let results: Vec<Value> = rows.iter().map(|row| {
         json!({
@@ -818,7 +878,7 @@ pub async fn salary_by_prefecture(db: &Database, params: &FilterParams) -> Resul
     );
 
     let conn = get_conn(db).await?;
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
 
     let results: Vec<Value> = rows.iter().map(|row| {
         json!({
@@ -853,7 +913,7 @@ pub async fn quality_kpi(db: &Database, params: &FilterParams) -> Result<Value, 
     );
 
     let conn = get_conn(db).await?;
-    let row = query_single_row(&conn, &sql).await?;
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
 
     Ok(json!({
         "avg_profit_ratio": null,
@@ -868,34 +928,33 @@ pub async fn quality_kpi(db: &Database, params: &FilterParams) -> Result<Value, 
     }))
 }
 
-/// 品質スコア分布
+/// 品質スコア分布 - 単一クエリCASE WHEN方式
 pub async fn quality_score_distribution(db: &Database, params: &FilterParams) -> Result<Value, AppError> {
     let w = WhereBuilder::from_filter_params(params);
     let where_clause = w.to_where_clause();
     let and_prefix = if where_clause.is_empty() { "WHERE" } else { &format!("{} AND", where_clause) };
 
-    let ranges = vec![
-        ("0-20", 0.0, 20.0),
-        ("20-40", 20.0, 40.0),
-        ("40-60", 40.0, 60.0),
-        ("60-80", 60.0, 80.0),
-        ("80-100", 80.0, 100.01),
-    ];
+    let sql = format!(
+        "SELECT
+            SUM(CASE WHEN CAST(quality_score AS REAL) >= 0 AND CAST(quality_score AS REAL) < 20 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN CAST(quality_score AS REAL) >= 20 AND CAST(quality_score AS REAL) < 40 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN CAST(quality_score AS REAL) >= 40 AND CAST(quality_score AS REAL) < 60 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN CAST(quality_score AS REAL) >= 60 AND CAST(quality_score AS REAL) < 80 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN CAST(quality_score AS REAL) >= 80 AND CAST(quality_score AS REAL) < 100.01 THEN 1 ELSE 0 END)
+        FROM facilities {} quality_score IS NOT NULL",
+        and_prefix
+    );
 
     let conn = get_conn(db).await?;
-    let mut results = Vec::new();
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
 
-    for (label, min, max) in &ranges {
-        let sql = format!(
-            "SELECT COUNT(*) FROM facilities {} quality_score IS NOT NULL AND CAST(quality_score AS REAL) >= {} AND CAST(quality_score AS REAL) < {}",
-            and_prefix, min, max
-        );
-        let row = query_single_row(&conn, &sql).await?;
-        results.push(json!({
+    let labels = ["0-20", "20-40", "40-60", "60-80", "80-100"];
+    let results: Vec<Value> = labels.iter().enumerate().map(|(i, label)| {
+        json!({
             "range": label,
-            "count": row_i64(&row, 0),
-        }));
-    }
+            "count": row_i64(&row, i as i32),
+        })
+    }).collect();
 
     Ok(Value::Array(results))
 }
@@ -919,7 +978,7 @@ pub async fn quality_by_prefecture(db: &Database, params: &FilterParams) -> Resu
     );
 
     let conn = get_conn(db).await?;
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
 
     let results: Vec<Value> = rows.iter().map(|row| {
         json!({
@@ -948,7 +1007,7 @@ pub async fn quality_rank_distribution(db: &Database, params: &FilterParams) -> 
     );
 
     let conn = get_conn(db).await?;
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
 
     let rank_colors = |rank: &str| -> &str {
         match rank {
@@ -991,7 +1050,7 @@ pub async fn quality_category_radar(db: &Database, params: &FilterParams) -> Res
     );
 
     let conn = get_conn(db).await?;
-    let row = query_single_row(&conn, &sql).await?;
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
 
     Ok(json!([
         {"category": "BCP策定", "score": row_f64(&row, 0), "fullMark": 100.0},
@@ -1034,7 +1093,7 @@ pub async fn corp_group_kpi(db: &Database, params: &FilterParams) -> Result<Valu
     );
 
     let conn = get_conn(db).await?;
-    let row = query_single_row(&conn, &sql).await?;
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
 
     Ok(json!({
         "total_corps": row_i64(&row, 0),
@@ -1077,7 +1136,7 @@ pub async fn corp_group_size_distribution(db: &Database, params: &FilterParams) 
     );
 
     let conn = get_conn(db).await?;
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
 
     let results: Vec<Value> = rows.iter().map(|row| {
         json!({
@@ -1099,6 +1158,10 @@ pub async fn corp_group_top_corps(db: &Database, params: &FilterParams, limit: u
         format!("{} AND \"法人番号\" IS NOT NULL AND \"法人番号\" != ''", where_clause)
     };
 
+    let mut query_params = w.into_params();
+    let limit_idx = query_params.len() + 1;
+    query_params.push(libsql::Value::Integer(limit as i64));
+
     let sql = format!(
         "SELECT
             COALESCE(\"法人名\", '') as corp_name,
@@ -1112,12 +1175,12 @@ pub async fn corp_group_top_corps(db: &Database, params: &FilterParams, limit: u
         FROM facilities {}
         GROUP BY \"法人番号\", \"法人名\"
         ORDER BY facility_count DESC
-        LIMIT {}",
-        corp_filter, limit
+        LIMIT ?{}",
+        corp_filter, limit_idx
     );
 
     let conn = get_conn(db).await?;
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, &sql, query_params).await?;
 
     let results: Vec<Value> = rows.iter().map(|row| {
         let prefs_str = row_str(row, 6);
@@ -1137,7 +1200,7 @@ pub async fn corp_group_top_corps(db: &Database, params: &FilterParams, limit: u
     Ok(Value::Array(results))
 }
 
-/// 法人別加算ヒートマップ
+/// 法人別加算ヒートマップ - N+1クエリ解消: IN句で一括取得
 pub async fn corp_group_kasan_heatmap(db: &Database, params: &FilterParams, top_n: usize) -> Result<Value, AppError> {
     let w = WhereBuilder::from_filter_params(params);
     let where_clause = w.to_where_clause();
@@ -1148,13 +1211,21 @@ pub async fn corp_group_kasan_heatmap(db: &Database, params: &FilterParams, top_
     };
 
     // 上位法人を取得
+    let mut top_params = w.clone_params();
+    let top_limit_idx = top_params.len() + 1;
+    top_params.push(libsql::Value::Integer(top_n as i64));
+
     let top_sql = format!(
-        "SELECT \"法人番号\", \"法人名\" FROM facilities {} GROUP BY \"法人番号\" ORDER BY COUNT(*) DESC LIMIT {}",
-        corp_filter, top_n
+        "SELECT \"法人番号\", \"法人名\" FROM facilities {} GROUP BY \"法人番号\" ORDER BY COUNT(*) DESC LIMIT ?{}",
+        corp_filter, top_limit_idx
     );
 
     let conn = get_conn(db).await?;
-    let top_rows = query_rows(&conn, &top_sql).await?;
+    let top_rows = query_rows_params(&conn, &top_sql, top_params).await?;
+
+    if top_rows.is_empty() {
+        return Ok(json!({ "corps": [] }));
+    }
 
     let kasan_cols = vec![
         "加算_処遇改善I", "加算_処遇改善II", "加算_処遇改善III", "加算_処遇改善IV",
@@ -1167,31 +1238,49 @@ pub async fn corp_group_kasan_heatmap(db: &Database, params: &FilterParams, top_
         "認知症ケア加算I", "認知症ケア加算II", "口腔連携加算", "緊急時加算",
     ];
 
+    // 法人番号リストを収集
+    let corp_numbers: Vec<String> = top_rows.iter().map(|r| row_str(r, 0)).collect();
+    let corp_names: Vec<String> = top_rows.iter().map(|r| row_str(r, 1)).collect();
+
+    // 単一クエリで全法人の施設データを一括取得（パラメタライズド）
+    let mut fac_params: Vec<libsql::Value> = Vec::new();
+    let placeholders: Vec<String> = corp_numbers.iter().enumerate().map(|(i, cn)| {
+        fac_params.push(libsql::Value::Text(cn.clone()));
+        format!("?{}", i + 1)
+    }).collect();
+
+    let kasan_select: Vec<String> = kasan_cols.iter().map(|c| format!("COALESCE(\"{}\", 0)", c)).collect();
+    let fac_sql = format!(
+        "SELECT \"法人番号\", \"事業所名\", {} FROM facilities WHERE \"法人番号\" IN ({})",
+        kasan_select.join(", "),
+        placeholders.join(",")
+    );
+
+    let fac_rows = query_rows_params(&conn, &fac_sql, fac_params).await.unwrap_or_default();
+
+    // 法人番号でグルーピング
+    let mut corp_facilities: std::collections::HashMap<String, Vec<&libsql::Row>> = std::collections::HashMap::new();
+    for fac_row in &fac_rows {
+        let corp_num = row_str(fac_row, 0);
+        corp_facilities.entry(corp_num).or_default().push(fac_row);
+    }
+
     let mut corps = Vec::new();
-    for top_row in &top_rows {
-        let corp_number = row_str(top_row, 0);
-        let corp_name = row_str(top_row, 1);
-
-        let kasan_select: Vec<String> = kasan_cols.iter().map(|c| format!("COALESCE(\"{}\", 0)", c)).collect();
-        let fac_sql = format!(
-            "SELECT \"事業所名\", {} FROM facilities WHERE \"法人番号\" = '{}'",
-            kasan_select.join(", "),
-            sanitize_sql(&corp_number)
-        );
-
-        let fac_rows = query_rows(&conn, &fac_sql).await.unwrap_or_default();
+    for (corp_number, corp_name) in corp_numbers.iter().zip(corp_names.iter()) {
         let mut facilities = Vec::new();
-        for fac_row in &fac_rows {
-            let fac_name = row_str(fac_row, 0);
-            let mut kasan_map = serde_json::Map::new();
-            for (i, name) in kasan_names.iter().enumerate() {
-                let val = row_i64(fac_row, (i + 1) as i32);
-                kasan_map.insert(name.to_string(), json!(val == 1));
+        if let Some(fac_rows_for_corp) = corp_facilities.get(corp_number) {
+            for fac_row in fac_rows_for_corp {
+                let fac_name = row_str(fac_row, 1);
+                let mut kasan_map = serde_json::Map::new();
+                for (i, name) in kasan_names.iter().enumerate() {
+                    let val = row_i64(fac_row, (i + 2) as i32);
+                    kasan_map.insert(name.to_string(), json!(val == 1));
+                }
+                facilities.push(json!({
+                    "facility_name": fac_name,
+                    "kasan": kasan_map,
+                }));
             }
-            facilities.push(json!({
-                "facility_name": fac_name,
-                "kasan": kasan_map,
-            }));
         }
 
         corps.push(json!({
@@ -1223,7 +1312,7 @@ pub async fn growth_kpi(db: &Database, params: &FilterParams) -> Result<Value, A
     );
 
     let conn = get_conn(db).await?;
-    let row = query_single_row(&conn, &sql).await?;
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
 
     let total_with_date = row_i64(&row, 0);
     let recent_3yr = row_i64(&row, 2);
@@ -1243,20 +1332,24 @@ pub async fn growth_establishment_trend(db: &Database, params: &FilterParams) ->
 
     let current_year = chrono::Utc::now().year();
 
+    let mut query_params = w.into_params();
+    let year_idx = query_params.len() + 1;
+    query_params.push(libsql::Value::Integer(current_year as i64));
+
     let sql = format!(
         "SELECT
-            ({} - CAST(years_in_business AS INTEGER)) as est_year,
+            (?{} - CAST(years_in_business AS INTEGER)) as est_year,
             COUNT(*) as cnt
         FROM facilities {} {} years_in_business IS NOT NULL AND years_in_business > 0
         GROUP BY est_year
         ORDER BY est_year ASC",
-        current_year,
+        year_idx,
         where_clause,
         if where_clause.is_empty() { "WHERE" } else { "AND" }
     );
 
     let conn = get_conn(db).await?;
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, &sql, query_params).await?;
 
     let results: Vec<Value> = rows.iter().map(|row| {
         json!({
@@ -1268,36 +1361,35 @@ pub async fn growth_establishment_trend(db: &Database, params: &FilterParams) ->
     Ok(Value::Array(results))
 }
 
-/// 事業年数分布
+/// 事業年数分布 - 単一クエリCASE WHEN方式
 pub async fn growth_years_distribution(db: &Database, params: &FilterParams) -> Result<Value, AppError> {
     let w = WhereBuilder::from_filter_params(params);
     let where_clause = w.to_where_clause();
     let and_prefix = if where_clause.is_empty() { "WHERE" } else { &format!("{} AND", where_clause) };
 
-    let ranges = vec![
-        ("0-5年", 0.0, 5.0),
-        ("5-10年", 5.0, 10.0),
-        ("10-15年", 10.0, 15.0),
-        ("15-20年", 15.0, 20.0),
-        ("20-25年", 20.0, 25.0),
-        ("25-30年", 25.0, 30.0),
-        ("30年以上", 30.0, 999.0),
-    ];
+    let sql = format!(
+        "SELECT
+            SUM(CASE WHEN years_in_business >= 0 AND years_in_business < 5 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN years_in_business >= 5 AND years_in_business < 10 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN years_in_business >= 10 AND years_in_business < 15 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN years_in_business >= 15 AND years_in_business < 20 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN years_in_business >= 20 AND years_in_business < 25 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN years_in_business >= 25 AND years_in_business < 30 THEN 1 ELSE 0 END),
+            SUM(CASE WHEN years_in_business >= 30 THEN 1 ELSE 0 END)
+        FROM facilities {} years_in_business IS NOT NULL",
+        and_prefix
+    );
 
     let conn = get_conn(db).await?;
-    let mut results = Vec::new();
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
 
-    for (label, min, max) in &ranges {
-        let sql = format!(
-            "SELECT COUNT(*) FROM facilities {} years_in_business IS NOT NULL AND years_in_business >= {} AND years_in_business < {}",
-            and_prefix, min, max
-        );
-        let row = query_single_row(&conn, &sql).await?;
-        results.push(json!({
+    let labels = ["0-5年", "5-10年", "10-15年", "15-20年", "20-25年", "25-30年", "30年以上"];
+    let results: Vec<Value> = labels.iter().enumerate().map(|(i, label)| {
+        json!({
             "range": label,
-            "count": row_i64(&row, 0),
-        }));
-    }
+            "count": row_i64(&row, i as i32),
+        })
+    }).collect();
 
     Ok(Value::Array(results))
 }
@@ -1310,30 +1402,34 @@ pub async fn growth_years_distribution(db: &Database, params: &FilterParams) -> 
 pub async fn meta(db: &Database) -> Result<Value, AppError> {
     let conn = get_conn(db).await?;
 
-    let count_row = query_single_row(&conn, "SELECT COUNT(*) FROM facilities").await?;
+    let count_row = query_single_row_params(&conn, "SELECT COUNT(*) FROM facilities", vec![]).await?;
     let total = row_i64(&count_row, 0);
 
     // 都道府県一覧
-    let pref_rows = query_rows(&conn,
-        "SELECT DISTINCT prefecture FROM facilities WHERE prefecture IS NOT NULL AND prefecture != '' ORDER BY prefecture"
+    let pref_rows = query_rows_params(&conn,
+        "SELECT DISTINCT prefecture FROM facilities WHERE prefecture IS NOT NULL AND prefecture != '' ORDER BY prefecture",
+        vec![],
     ).await?;
     let prefectures: Vec<String> = pref_rows.iter().map(|r| row_str(r, 0)).collect();
 
     // サービスコード一覧
-    let svc_rows = query_rows(&conn,
-        "SELECT DISTINCT \"サービスコード\" FROM facilities WHERE \"サービスコード\" IS NOT NULL AND \"サービスコード\" != '' ORDER BY \"サービスコード\""
+    let svc_rows = query_rows_params(&conn,
+        "SELECT DISTINCT \"サービスコード\" FROM facilities WHERE \"サービスコード\" IS NOT NULL AND \"サービスコード\" != '' ORDER BY \"サービスコード\"",
+        vec![],
     ).await?;
     let service_codes: Vec<String> = svc_rows.iter().map(|r| row_str(r, 0)).collect();
 
     // 法人種別一覧
-    let ct_rows = query_rows(&conn,
-        "SELECT DISTINCT corp_type FROM facilities WHERE corp_type IS NOT NULL AND corp_type != '' ORDER BY corp_type"
+    let ct_rows = query_rows_params(&conn,
+        "SELECT DISTINCT corp_type FROM facilities WHERE corp_type IS NOT NULL AND corp_type != '' ORDER BY corp_type",
+        vec![],
     ).await?;
     let corp_types: Vec<String> = ct_rows.iter().map(|r| row_str(r, 0)).collect();
 
     // 従業者数範囲
-    let range_row = query_single_row(&conn,
-        "SELECT MIN(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL)), MAX(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL)) FROM facilities"
+    let range_row = query_single_row_params(&conn,
+        "SELECT MIN(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL)), MAX(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL)) FROM facilities",
+        vec![],
     ).await?;
 
     Ok(json!({
@@ -1354,14 +1450,20 @@ pub async fn search_facilities(db: &Database, params: &SearchParams) -> Result<V
     let filter_params = params.to_filter_params();
     let mut w = WhereBuilder::from_filter_params(&filter_params);
 
-    // テキスト検索（q パラメータ）
+    // テキスト検索（q パラメータ）- パラメタライズド
     if let Some(ref q) = params.q {
         let q = q.trim();
         if !q.is_empty() {
-            let escaped = sanitize_sql(q);
+            let like_val = format!("%{}%", q);
+            let idx1 = w.next_param();
+            w.params.push(libsql::Value::Text(like_val.clone()));
+            let idx2 = w.next_param();
+            w.params.push(libsql::Value::Text(like_val.clone()));
+            let idx3 = w.next_param();
+            w.params.push(libsql::Value::Text(like_val));
             w.conditions.push(format!(
-                "(\"事業所名\" LIKE '%{}%' OR \"法人名\" LIKE '%{}%' OR \"電話番号\" LIKE '%{}%')",
-                escaped, escaped, escaped
+                "(\"事業所名\" LIKE ?{} OR \"法人名\" LIKE ?{} OR \"電話番号\" LIKE ?{})",
+                idx1, idx2, idx3
             ));
         }
     }
@@ -1371,7 +1473,7 @@ pub async fn search_facilities(db: &Database, params: &SearchParams) -> Result<V
     let per_page = params.per_page.unwrap_or(50).min(500).max(1);
     let offset = (page - 1) * per_page;
 
-    // ソートカラムのマッピング
+    // ソートカラムのマッピング（ホワイトリスト方式 - インジェクション不可）
     let sort_col = match params.sort_by.as_deref() {
         Some("jigyosho_number") => "\"事業所番号\"",
         Some("jigyosho_name") => "\"事業所名\"",
@@ -1393,11 +1495,17 @@ pub async fn search_facilities(db: &Database, params: &SearchParams) -> Result<V
     // 総件数取得
     let count_sql = format!("SELECT COUNT(*) FROM facilities {}", where_clause);
     let conn = get_conn(db).await?;
-    let count_row = query_single_row(&conn, &count_sql).await?;
+    let count_row = query_single_row_params(&conn, &count_sql, w.clone_params()).await?;
     let total = row_i64(&count_row, 0) as usize;
     let total_pages = if total == 0 { 0 } else { (total + per_page - 1) / per_page };
 
-    // データ取得
+    // データ取得（LIMIT/OFFSETもパラメタライズ）
+    let mut data_params = w.into_params();
+    let limit_idx = data_params.len() + 1;
+    data_params.push(libsql::Value::Integer(per_page as i64));
+    let offset_idx = data_params.len() + 1;
+    data_params.push(libsql::Value::Integer(offset as i64));
+
     let data_sql = format!(
         "SELECT
             \"事業所番号\", \"事業所名\", \"管理者名\", \"管理者職名\",
@@ -1409,11 +1517,11 @@ pub async fn search_facilities(db: &Database, params: &SearchParams) -> Result<V
             \"サービスコード\", \"サービス名\"
         FROM facilities {}
         ORDER BY {} {}
-        LIMIT {} OFFSET {}",
-        where_clause, sort_col, sort_order, per_page, offset
+        LIMIT ?{} OFFSET ?{}",
+        where_clause, sort_col, sort_order, limit_idx, offset_idx
     );
 
-    let rows = query_rows(&conn, &data_sql).await?;
+    let rows = query_rows_params(&conn, &data_sql, data_params).await?;
 
     let items: Vec<Value> = rows.iter().map(|row| {
         json!({
@@ -1455,13 +1563,11 @@ pub async fn search_facilities(db: &Database, params: &SearchParams) -> Result<V
     }))
 }
 
-/// 施設詳細
+/// 施設詳細 - パラメタライズドクエリ
 pub async fn facility_detail(db: &Database, id: &str) -> Result<Value, AppError> {
     let conn = get_conn(db).await?;
-    let escaped_id = sanitize_sql(id);
 
-    let sql = format!(
-        "SELECT
+    let sql = "SELECT
             \"事業所番号\", \"事業所名\", \"管理者名\", \"管理者職名\",
             \"代表者名\", \"代表者職名\", \"法人名\", \"法人番号\",
             \"電話番号\", \"FAX番号\", \"住所\", \"HP\",
@@ -1470,12 +1576,10 @@ pub async fn facility_detail(db: &Database, id: &str) -> Result<Value, AppError>
             prefecture, corp_type, turnover_rate, fulltime_ratio, years_in_business,
             \"サービスコード\", \"サービス名\"
         FROM facilities
-        WHERE \"事業所番号\" = '{}'
-        LIMIT 1",
-        escaped_id
-    );
+        WHERE \"事業所番号\" = ?1
+        LIMIT 1";
 
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, sql, vec![libsql::Value::Text(id.to_string())]).await?;
     if rows.is_empty() {
         return Err(AppError::NotFound(format!("事業所番号 {} が見つかりません", id)));
     }
@@ -1534,27 +1638,45 @@ pub async fn ma_screening(
 
     let where_clause = w.to_where_clause();
 
-    // HAVING句の条件
+    // HAVING句の条件（パラメタライズド）
     let mut having_conditions = Vec::new();
+    let mut extra_params: Vec<libsql::Value> = Vec::new();
+    let mut extra_counter = w.param_counter;
+
     if let Some(ref prefs) = prefectures {
-        let pref_list: Vec<String> = prefs.split(',').map(|s| format!("'{}'", sanitize_sql(s.trim()))).collect();
-        // GROUP_CONCAT内の都道府県チェック（近似的なフィルタ）
-        for p in &pref_list {
-            having_conditions.push(format!("prefectures LIKE '%' || {} || '%'", p));
+        for p in prefs.split(',') {
+            let p = p.trim();
+            if !p.is_empty() {
+                extra_counter += 1;
+                extra_params.push(libsql::Value::Text(p.to_string()));
+                having_conditions.push(format!("prefectures LIKE '%' || ?{} || '%'", extra_counter));
+            }
         }
     }
     if let Some(min) = staff_min {
-        having_conditions.push(format!("total_staff >= {}", min));
+        extra_counter += 1;
+        extra_params.push(libsql::Value::Real(min));
+        having_conditions.push(format!("total_staff >= ?{}", extra_counter));
     }
     if let Some(max) = staff_max {
-        having_conditions.push(format!("total_staff <= {}", max));
+        extra_counter += 1;
+        extra_params.push(libsql::Value::Real(max));
+        having_conditions.push(format!("total_staff <= ?{}", extra_counter));
     }
     if let Some(min) = turnover_min {
-        having_conditions.push(format!("avg_turnover >= {}", min));
+        extra_counter += 1;
+        extra_params.push(libsql::Value::Real(min));
+        having_conditions.push(format!("avg_turnover >= ?{}", extra_counter));
     }
     if let Some(max) = turnover_max {
-        having_conditions.push(format!("avg_turnover <= {}", max));
+        extra_counter += 1;
+        extra_params.push(libsql::Value::Real(max));
+        having_conditions.push(format!("avg_turnover <= ?{}", extra_counter));
     }
+
+    extra_counter += 1;
+    extra_params.push(libsql::Value::Integer(limit as i64));
+    let limit_idx = extra_counter;
 
     let having = if having_conditions.is_empty() {
         String::new()
@@ -1577,14 +1699,17 @@ pub async fn ma_screening(
         GROUP BY \"法人番号\", \"法人名\"
         {}
         ORDER BY facility_count DESC, total_staff DESC
-        LIMIT {}",
-        where_clause, having, limit
+        LIMIT ?{}",
+        where_clause, having, limit_idx
     );
 
-    let conn = get_conn(db).await?;
-    let rows = query_rows(&conn, &sql).await?;
+    let mut all_params = w.into_params();
+    all_params.extend(extra_params);
 
-    let items: Vec<Value> = rows.iter().enumerate().map(|(i, row)| {
+    let conn = get_conn(db).await?;
+    let rows = query_rows_params(&conn, &sql, all_params).await?;
+
+    let items: Vec<Value> = rows.iter().enumerate().map(|(_i, row)| {
         let fac_count = row_i64(row, 3) as f64;
         let total_staff = row_f64(row, 4);
         let avg_turnover = row_f64_opt(row, 5);
@@ -1619,21 +1744,24 @@ pub async fn ma_screening(
     }))
 }
 
-/// DD法人検索
+/// DD法人検索 - パラメタライズドクエリ
 pub async fn dd_search(db: &Database, params: &FilterParams, query: &str) -> Result<Value, AppError> {
-    let w = WhereBuilder::from_filter_params(params);
-    let mut conditions = w.conditions;
-    conditions.push("\"法人番号\" IS NOT NULL AND \"法人番号\" != ''".to_string());
+    let mut w = WhereBuilder::from_filter_params(params);
+    w.conditions.push("\"法人番号\" IS NOT NULL AND \"法人番号\" != ''".to_string());
 
     if !query.is_empty() {
-        let escaped = sanitize_sql(query);
-        conditions.push(format!(
-            "(\"法人名\" LIKE '%{}%' OR \"法人番号\" = '{}')",
-            escaped, escaped
+        let like_val = format!("%{}%", query);
+        let idx1 = w.next_param();
+        w.params.push(libsql::Value::Text(like_val));
+        let idx2 = w.next_param();
+        w.params.push(libsql::Value::Text(query.to_string()));
+        w.conditions.push(format!(
+            "(\"法人名\" LIKE ?{} OR \"法人番号\" = ?{})",
+            idx1, idx2
         ));
     }
 
-    let where_clause = format!("WHERE {}", conditions.join(" AND "));
+    let where_clause = format!("WHERE {}", w.conditions.join(" AND "));
 
     let sql = format!(
         "SELECT
@@ -1649,7 +1777,7 @@ pub async fn dd_search(db: &Database, params: &FilterParams, query: &str) -> Res
     );
 
     let conn = get_conn(db).await?;
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
 
     let results: Vec<Value> = rows.iter().map(|row| {
         json!({
@@ -1663,14 +1791,12 @@ pub async fn dd_search(db: &Database, params: &FilterParams, query: &str) -> Res
     Ok(Value::Array(results))
 }
 
-/// DDレポート
+/// DDレポート - パラメタライズドクエリ
 pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) -> Result<Value, AppError> {
     let conn = get_conn(db).await?;
-    let escaped = sanitize_sql(corp_number);
 
-    // 法人の施設データを取得
-    let sql = format!(
-        "SELECT
+    // 法人の施設データを取得（パラメタライズド）
+    let sql = "SELECT
             \"事業所名\", \"法人名\", \"代表者名\", prefecture, corp_type,
             CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) as staff,
             CAST(COALESCE(NULLIF(\"定員\", ''), '0') AS REAL) as capacity,
@@ -1681,11 +1807,9 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
             COALESCE(\"品質_BCP策定\", 0) as bcp,
             COALESCE(\"品質_賠償保険\", 0) as insurance
         FROM facilities
-        WHERE \"法人番号\" = '{}'",
-        escaped
-    );
+        WHERE \"法人番号\" = ?1";
 
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, sql, vec![libsql::Value::Text(corp_number.to_string())]).await?;
     if rows.is_empty() {
         return Err(AppError::NotFound(format!("法人番号 {} が見つかりません", corp_number)));
     }
@@ -1738,19 +1862,23 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
     let bcp_rate = if facility_count > 0 { Some(bcp_count as f64 / facility_count as f64) } else { None };
     let insurance_rate = if facility_count > 0 { Some(insurance_count as f64 / facility_count as f64) } else { None };
 
-    // 地域ベンチマーク
+    // 地域ベンチマーク（パラメタライズド）
     let pref_list: Vec<&String> = prefectures.iter().collect();
     let benchmark = if !pref_list.is_empty() {
-        let pref_in: Vec<String> = pref_list.iter().map(|p| format!("'{}'", sanitize_sql(p))).collect();
+        let mut bench_params: Vec<libsql::Value> = Vec::new();
+        let placeholders: Vec<String> = pref_list.iter().enumerate().map(|(i, p)| {
+            bench_params.push(libsql::Value::Text((*p).clone()));
+            format!("?{}", i + 1)
+        }).collect();
         let bench_sql = format!(
             "SELECT
                 AVG(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END),
                 AVG(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL)),
                 AVG(CAST(COALESCE(NULLIF(\"定員\", ''), '0') AS REAL))
             FROM facilities WHERE prefecture IN ({})",
-            pref_in.join(",")
+            placeholders.join(",")
         );
-        match query_single_row(&conn, &bench_sql).await {
+        match query_single_row_params(&conn, &bench_sql, bench_params).await {
             Ok(row) => json!({
                 "region_avg_turnover": row_f64(&row, 0),
                 "region_avg_staff": row_f64(&row, 1),
@@ -1813,23 +1941,19 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
     }))
 }
 
-/// PMIシミュレーション
+/// PMIシミュレーション - パラメタライズドクエリ
 pub async fn pmi_simulation(db: &Database, params: &FilterParams, buyer_corp: &str, target_corp: &str) -> Result<Value, AppError> {
     let conn = get_conn(db).await?;
 
     async fn get_corp_data(conn: &libsql::Connection, corp_number: &str) -> Result<Value, AppError> {
-        let escaped = sanitize_sql(corp_number);
-        let sql = format!(
-            "SELECT
+        let sql = "SELECT
                 COALESCE(\"法人名\", '') as corp_name,
                 \"事業所名\",
                 CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) as staff,
                 prefecture, \"サービス名\",
                 turnover_rate, fulltime_ratio
-            FROM facilities WHERE \"法人番号\" = '{}'",
-            escaped
-        );
-        let rows = query_rows(conn, &sql).await?;
+            FROM facilities WHERE \"法人番号\" = ?1";
+        let rows = query_rows_params(conn, sql, vec![libsql::Value::Text(corp_number.to_string())]).await?;
         if rows.is_empty() {
             return Err(AppError::NotFound(format!("法人番号 {} が見つかりません", corp_number)));
         }
@@ -1916,24 +2040,20 @@ pub async fn pmi_simulation(db: &Database, params: &FilterParams, buyer_corp: &s
     }))
 }
 
-/// ベンチマーク
+/// ベンチマーク - パラメタライズドクエリ
 pub async fn benchmark(db: &Database, jigyosho_number: &str) -> Result<Value, AppError> {
     let conn = get_conn(db).await?;
-    let escaped = sanitize_sql(jigyosho_number);
 
-    // 対象施設の情報を取得
-    let sql = format!(
-        "SELECT
+    // 対象施設の情報を取得（パラメタライズド）
+    let sql = "SELECT
             \"事業所番号\", \"事業所名\", \"法人名\", prefecture,
             CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) as staff,
             CAST(COALESCE(NULLIF(\"定員\", ''), '0') AS REAL) as capacity,
             turnover_rate, fulltime_ratio, years_in_business,
             occupancy_rate, quality_score, kasan_count
-        FROM facilities WHERE \"事業所番号\" = '{}'",
-        escaped
-    );
+        FROM facilities WHERE \"事業所番号\" = ?1";
 
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, sql, vec![libsql::Value::Text(jigyosho_number.to_string())]).await?;
     if rows.is_empty() {
         return Err(AppError::NotFound(format!("事業所番号 {} が見つかりません", jigyosho_number)));
     }
@@ -1949,7 +2069,7 @@ pub async fn benchmark(db: &Database, jigyosho_number: &str) -> Result<Value, Ap
     let quality = row_f64_opt(row, 10).unwrap_or(0.0);
     let kasan = row_f64_opt(row, 11).unwrap_or(0.0);
 
-    // 全国平均
+    // 全国平均（パラメータ不要）
     let avg_sql = "SELECT
         AVG(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL)),
         AVG(CAST(COALESCE(NULLIF(\"定員\", ''), '0') AS REAL)),
@@ -1960,11 +2080,10 @@ pub async fn benchmark(db: &Database, jigyosho_number: &str) -> Result<Value, Ap
         AVG(CAST(COALESCE(NULLIF(quality_score, ''), '0') AS REAL)),
         AVG(CAST(COALESCE(NULLIF(kasan_count, ''), '0') AS REAL))
     FROM facilities";
-    let nat_row = query_single_row(&conn, avg_sql).await?;
+    let nat_row = query_single_row_params(&conn, avg_sql, vec![]).await?;
 
-    // 都道府県平均
-    let pref_avg_sql = format!(
-        "SELECT
+    // 都道府県平均（パラメタライズド）
+    let pref_avg_sql = "SELECT
             AVG(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL)),
             AVG(CAST(COALESCE(NULLIF(\"定員\", ''), '0') AS REAL)),
             AVG(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END),
@@ -1973,12 +2092,10 @@ pub async fn benchmark(db: &Database, jigyosho_number: &str) -> Result<Value, Ap
             AVG(CASE WHEN occupancy_rate BETWEEN 0.0 AND 3.0 THEN occupancy_rate END),
             AVG(CAST(COALESCE(NULLIF(quality_score, ''), '0') AS REAL)),
             AVG(CAST(COALESCE(NULLIF(kasan_count, ''), '0') AS REAL))
-        FROM facilities WHERE prefecture = '{}'",
-        sanitize_sql(&pref)
-    );
+        FROM facilities WHERE prefecture = ?1";
     // 安全に取得（都道府県行が取れない場合のフォールバック）
     let (pref_staff, pref_cap, pref_turn, pref_ft, pref_years, pref_occ, pref_qual, pref_kasan) =
-        match query_single_row(&conn, &pref_avg_sql).await {
+        match query_single_row_params(&conn, pref_avg_sql, vec![libsql::Value::Text(pref.clone())]).await {
             Ok(pr) => (
                 row_f64(&pr, 0), row_f64(&pr, 1), row_f64(&pr, 2), row_f64(&pr, 3),
                 row_f64(&pr, 4), row_f64(&pr, 5), row_f64(&pr, 6), row_f64(&pr, 7),
@@ -2055,7 +2172,7 @@ pub async fn export_csv(db: &Database, params: &FilterParams) -> Result<Vec<u8>,
     );
 
     let conn = get_conn(db).await?;
-    let rows = query_rows(&conn, &sql).await?;
+    let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
 
     // BOM + CSVヘッダー
     let mut csv = vec![0xEFu8, 0xBB, 0xBF]; // BOM

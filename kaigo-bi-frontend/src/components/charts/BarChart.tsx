@@ -15,6 +15,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 import { CHART_COLORS } from "@/lib/constants";
+import type { ChartDataPoint, TooltipPayloadEntry } from "@/lib/types";
 
 /** カスタムTooltip: ダーク背景 */
 function CustomTooltip({
@@ -24,7 +25,7 @@ function CustomTooltip({
   formatter,
 }: {
   active?: boolean;
-  payload?: any[];
+  payload?: TooltipPayloadEntry[];
   label?: string;
   formatter?: (value: number) => string;
 }) {
@@ -45,7 +46,7 @@ function CustomTooltip({
 
 interface BarChartProps {
   /** チャートデータ */
-  data: any[];
+  data: ChartDataPoint[];
   /** X軸のキー */
   xKey: string;
   /** Y軸のキー */

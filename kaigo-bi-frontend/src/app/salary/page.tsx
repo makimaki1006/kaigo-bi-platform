@@ -28,6 +28,11 @@ import LineChart from "@/components/charts/LineChart";
 import ScatterChart from "@/components/charts/ScatterChart";
 import ChartCard from "@/components/charts/ChartCard";
 import FilterPanel from "@/components/filters/FilterPanel";
+
+/** 介護業界の賃金補正係数（全産業平均からの推定用） */
+const CARE_INDUSTRY_WAGE_FACTOR = 0.75;
+/** 介護事業所の概算総数（厚生労働省データに基づく推定値） */
+const TOTAL_FACILITIES_ESTIMATE = 223107;
 import DataPendingPlaceholder from "@/components/common/DataPendingPlaceholder";
 import ApiErrorBanner from "@/components/common/ApiErrorBanner";
 
@@ -83,7 +88,7 @@ function SalaryContent() {
       .filter((p) => p.avg_monthly_wage != null)
       .map((p) => ({
         prefecture: p.prefecture,
-        avg_wage: Math.round((p.avg_monthly_wage || 0) * 1000 * 0.75),
+        avg_wage: Math.round((p.avg_monthly_wage || 0) * 1000 * CARE_INDUSTRY_WAGE_FACTOR),
       }))
       .sort((a, b) => b.avg_wage - a.avg_wage)
       .slice(0, 20);
@@ -129,7 +134,7 @@ function SalaryContent() {
     // data_count がキャッシュに含まれている場合
     if (dataCount != null && dataCount > 0) {
       // 総施設数は約223,107件（概算）
-      const totalEstimate = 223107;
+      const totalEstimate = TOTAL_FACILITIES_ESTIMATE;
       const rate = ((dataCount / totalEstimate) * 100).toFixed(1);
       return { count: dataCount, total: totalEstimate, rate };
     }
@@ -137,7 +142,7 @@ function SalaryContent() {
     if (jobTypeWages && jobTypeWages.length > 0) {
       const totalCount = jobTypeWages.reduce((sum, w) => sum + w.count, 0);
       if (totalCount > 0) {
-        const totalEstimate = 223107;
+        const totalEstimate = TOTAL_FACILITIES_ESTIMATE;
         const rate = ((totalCount / totalEstimate) * 100).toFixed(1);
         return { count: totalCount, total: totalEstimate, rate };
       }

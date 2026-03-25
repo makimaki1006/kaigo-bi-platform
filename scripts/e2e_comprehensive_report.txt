@@ -1,6 +1,6 @@
 
 ====================================================================
-E2E COMPREHENSIVE TEST REPORT - 2026-03-25 17:51
+E2E COMPREHENSIVE TEST REPORT - 2026-03-25 23:07
 ====================================================================
 
 [API Tests] 18/18 PASS
@@ -25,14 +25,14 @@ E2E COMPREHENSIVE TEST REPORT - 2026-03-25 17:51
 
 [Page Data Tests] 10/10 PASS
     PASS PageData /dashboard  -- 本文長=737, charts=194
-    PASS PageData /salary  -- 本文長=3655, charts=615
-    PASS PageData /workforce  -- 本文長=1254, charts=679
-    PASS PageData /market  -- 本文長=1359, charts=563
+    PASS PageData /salary  -- 本文長=4593, charts=1369
+    PASS PageData /workforce  -- 本文長=3973, charts=2873
+    PASS PageData /market  -- 本文長=4265, charts=3493
     PASS PageData /quality  -- 本文長=1118, charts=96
     PASS PageData /revenue  -- 本文長=1052, charts=159
-    PASS PageData /service-portfolio  -- 本文長=2964
+    PASS PageData /service-portfolio  -- 本文長=2951
     PASS PageData /corp-group  -- 本文長=6476
-    PASS PageData /growth  -- 本文長=2367
+    PASS PageData /growth  -- 本文長=3581
     PASS PageData /ma-screening  -- 本文長=8328
 
 [Layout Tests] 5/5 PASS
@@ -43,16 +43,16 @@ E2E COMPREHENSIVE TEST REPORT - 2026-03-25 17:51
     PASS Layout /workforce  -- レイアウト問題なし
 
 [Screenshot Tests] 10/10 PASS
-    PASS Screenshot /dashboard  -- size=226595bytes, colors=24, elements=505
-    PASS Screenshot /salary  -- size=1097652bytes, colors=26, elements=1549
-    PASS Screenshot /workforce  -- size=401804bytes, colors=26, elements=1142
-    PASS Screenshot /market  -- size=472168bytes, colors=23, elements=1108
-    PASS Screenshot /quality  -- size=265623bytes, colors=24, elements=497
-    PASS Screenshot /revenue  -- size=296371bytes, colors=24, elements=571
-    PASS Screenshot /service-portfolio  -- size=762186bytes, colors=29, elements=937
-    PASS Screenshot /corp-group  -- size=606757bytes, colors=23, elements=744
-    PASS Screenshot /growth  -- size=476817bytes, colors=23, elements=1660
-    PASS Screenshot /ma-screening  -- size=1563274bytes, colors=24, elements=3050
+    PASS Screenshot /dashboard  -- size=226593bytes, colors=24, elements=505
+    PASS Screenshot /salary  -- size=1231788bytes, colors=26, elements=2500
+    PASS Screenshot /workforce  -- size=529140bytes, colors=26, elements=3892
+    PASS Screenshot /market  -- size=276800bytes, colors=23, elements=3462
+    PASS Screenshot /quality  -- size=265625bytes, colors=24, elements=497
+    PASS Screenshot /revenue  -- size=296374bytes, colors=24, elements=571
+    PASS Screenshot /service-portfolio  -- size=764945bytes, colors=29, elements=937
+    PASS Screenshot /corp-group  -- size=586205bytes, colors=23, elements=742
+    PASS Screenshot /growth  -- size=590689bytes, colors=23, elements=3135
+    PASS Screenshot /ma-screening  -- size=1563275bytes, colors=24, elements=3050
 
 [Interaction Tests] 2/2 PASS
     PASS Dashboard prefecture filter  -- カスタムフィルタ操作後データ変化あり

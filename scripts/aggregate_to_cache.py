@@ -16,20 +16,23 @@ from datetime import datetime
 import pandas as pd
 import requests
 
+from turso_helpers import (
+    get_turso_config,
+    get_headers,
+    execute_sql as _execute_sql_raw,
+    execute_single as _execute_single_raw,
+    make_arg,
+    safe_float as _safe_float_base,
+)
+
 # Windows環境でのUTF-8出力対応
 sys.stdout.reconfigure(encoding="utf-8")
 
 # ============================================================
-# Turso接続設定
+# Turso接続設定（環境変数必須、フォールバックなし）
 # ============================================================
-TURSO_URL = os.environ.get("TURSO_DATABASE_URL", "https://cw-makimaki1006.aws-ap-northeast-1.turso.io")
-TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN")
-if not TURSO_TOKEN:
-    raise ValueError("TURSO_AUTH_TOKEN environment variable is required")
-HEADERS = {
-    "Authorization": f"Bearer {TURSO_TOKEN}",
-    "Content-Type": "application/json",
-}
+TURSO_URL, TURSO_TOKEN = get_turso_config()
+HEADERS = get_headers(TURSO_TOKEN)
 PAGE_SIZE = 5000
 
 # ============================================================
@@ -53,39 +56,16 @@ SALARY_TENURE_COLS = [f"賃金_平均勤続{i}" for i in range(1, 6)]
 
 
 # ============================================================
-# Turso API ヘルパー
+# Turso API ヘルパー（turso_helpers のラッパー）
 # ============================================================
 def execute_sql(statements):
     """Turso HTTP API v2 pipeline でSQLを実行"""
-    resp = requests.post(
-        f"{TURSO_URL}/v2/pipeline",
-        headers=HEADERS,
-        json={"requests": statements},
-        timeout=120,
-    )
-    if resp.status_code != 200:
-        raise Exception(f"Turso APIエラー: HTTP {resp.status_code}: {resp.text[:500]}")
-    return resp.json()
+    return _execute_sql_raw(TURSO_URL, HEADERS, statements)
 
 
 def execute_single(sql, args=None):
     """単一SQLを実行"""
-    stmt = {"type": "execute", "stmt": {"sql": sql}}
-    if args:
-        stmt["stmt"]["args"] = args
-    return execute_sql([stmt])
-
-
-def make_arg(value):
-    """Turso API用の引数フォーマットを生成"""
-    if value is None:
-        return {"type": "null"}
-    elif isinstance(value, int):
-        return {"type": "integer", "value": str(value)}
-    elif isinstance(value, float):
-        return {"type": "float", "value": value}
-    else:
-        return {"type": "text", "value": str(value)}
+    return _execute_single_raw(TURSO_URL, HEADERS, sql, args)
 
 
 # ============================================================
@@ -595,8 +575,14 @@ def agg_kasan_detail_rates(df):
     # 全体集計用
     kasan_stats = defaultdict(lambda: {"count": 0, "total": 0, "service_codes": set()})
 
-    for _, row in df.iterrows():
-        raw = row.get("加算_全項目")
+    # サービスコードカラムを事前に特定
+    svc_col = "service_code" if "service_code" in df.columns else "サービスコード"
+    kasan_col_idx = df.columns.get_loc("加算_全項目")
+    svc_col_idx = df.columns.get_loc(svc_col) if svc_col in df.columns else None
+    positive_values = {"○", "あり", "✓", "✔", "●"}
+
+    for tup in df.itertuples(index=False):
+        raw = tup[kasan_col_idx]
         if not raw or not isinstance(raw, str) or raw.strip() == "":
             continue
         try:
@@ -604,7 +590,7 @@ def agg_kasan_detail_rates(df):
         except (ValueError, TypeError):
             continue
 
-        svc = str(row.get("service_code", row.get("サービスコード", "")))
+        svc = str(tup[svc_col_idx]) if svc_col_idx is not None else ""
 
         for kasan_name, value in kasan_dict.items():
             key = kasan_name.strip()
@@ -612,7 +598,7 @@ def agg_kasan_detail_rates(df):
                 continue
             kasan_stats[key]["total"] += 1
             kasan_stats[key]["service_codes"].add(svc)
-            if value in ("○", "あり", "✓", "✔", "●"):
+            if value in positive_values:
                 kasan_stats[key]["count"] += 1
 
     # 結果をリスト化（取得率でソート）
@@ -676,26 +662,39 @@ def agg_salary_kpi(df):
 
 
 def agg_salary_by_job_type(df):
-    """salary_by_job_type: 職種別賃金（unpivot）"""
-    records = []
-    for _, row in df.iterrows():
-        for j in range(1, 6):
-            job = row.get(f"賃金_職種{j}")
-            amount = safe_float(row.get(f"賃金_月額{j}"))
-            age = safe_float(row.get(f"賃金_平均年齢{j}"))
-            tenure = safe_float(row.get(f"賃金_平均勤続{j}"))
-            if job and str(job).strip() and amount is not None and 10000 <= amount <= 2000000:
-                records.append({
-                    "job_type": str(job).strip(),
-                    "salary": amount,
-                    "age": age,
-                    "tenure": tenure,
-                })
+    """salary_by_job_type: 職種別賃金（unpivot、ベクトル化版）"""
+    frames = []
+    for j in range(1, 6):
+        job_col = f"賃金_職種{j}"
+        amt_col = f"賃金_月額{j}"
+        age_col = f"賃金_平均年齢{j}"
+        ten_col = f"賃金_平均勤続{j}"
+        if job_col not in df.columns or amt_col not in df.columns:
+            continue
+        sub = df[[job_col, amt_col, age_col, ten_col]].copy()
+        sub.columns = ["job_type", "salary", "age", "tenure"]
+        sub["salary"] = sub["salary"].apply(safe_float)
+        sub["age"] = sub["age"].apply(safe_float)
+        sub["tenure"] = sub["tenure"].apply(safe_float)
+        # 有効レコードのみ
+        mask = (
+            sub["job_type"].notna()
+            & (sub["job_type"].astype(str).str.strip() != "")
+            & sub["salary"].notna()
+            & (sub["salary"] >= 10000)
+            & (sub["salary"] <= 2000000)
+        )
+        sub = sub[mask].copy()
+        sub["job_type"] = sub["job_type"].astype(str).str.strip()
+        frames.append(sub)
 
-    if not records:
+    if not frames:
         return []
 
-    rec_df = pd.DataFrame(records)
+    rec_df = pd.concat(frames, ignore_index=True)
+    if rec_df.empty:
+        return []
+
     grouped = rec_df.groupby("job_type").agg(
         avg_salary=("salary", "mean"),
         avg_age=("age", "mean"),
@@ -703,47 +702,52 @@ def agg_salary_by_job_type(df):
         count=("salary", "size"),
     ).reset_index()
 
-    return [
-        {
+    return grouped.apply(
+        lambda row: {
             "job_type": row["job_type"],
             "avg_salary": round_safe(row["avg_salary"], 0),
             "avg_age": round_safe(row["avg_age"], 1),
             "avg_tenure": round_safe(row["avg_tenure"], 1),
             "count": int(row["count"]),
-        }
-        for _, row in grouped.iterrows()
-    ]
+        },
+        axis=1,
+    ).tolist()
 
 
 def agg_salary_by_prefecture(df):
-    """salary_by_prefecture: 都道府県別賃金"""
-    records = []
-    for _, row in df.iterrows():
-        pref = row.get("prefecture")
-        if not pref:
+    """salary_by_prefecture: 都道府県別賃金（ベクトル化版）"""
+    frames = []
+    valid_pref = df["prefecture"].notna()
+    for j in range(1, 6):
+        amt_col = f"賃金_月額{j}"
+        if amt_col not in df.columns:
             continue
-        for j in range(1, 6):
-            amount = safe_float(row.get(f"賃金_月額{j}"))
-            if amount is not None and 10000 <= amount <= 2000000:
-                records.append({"prefecture": pref, "salary": amount})
+        sub = df.loc[valid_pref, ["prefecture", amt_col]].copy()
+        sub.columns = ["prefecture", "salary"]
+        sub["salary"] = sub["salary"].apply(safe_float)
+        mask = sub["salary"].notna() & (sub["salary"] >= 10000) & (sub["salary"] <= 2000000)
+        frames.append(sub[mask])
 
-    if not records:
+    if not frames:
         return []
 
-    rec_df = pd.DataFrame(records)
+    rec_df = pd.concat(frames, ignore_index=True)
+    if rec_df.empty:
+        return []
+
     grouped = rec_df.groupby("prefecture").agg(
         avg_salary=("salary", "mean"),
         count=("salary", "size"),
     ).reset_index()
 
-    return [
-        {
+    return grouped.apply(
+        lambda row: {
             "prefecture": row["prefecture"],
             "avg_salary": round_safe(row["avg_salary"], 0),
             "count": int(row["count"]),
-        }
-        for _, row in grouped.iterrows()
-    ]
+        },
+        axis=1,
+    ).tolist()
 
 
 def compute_quality_scores(df):
@@ -914,7 +918,7 @@ def agg_growth_kpi(df):
 def agg_growth_trend(df):
     """growth_trend: 設立年別件数"""
     yib = df["years_in_business"].dropna()
-    est_year = (2026 - yib).astype(int)
+    est_year = (datetime.now().year - yib).astype(int)
     grouped = est_year.value_counts().sort_index()
 
     return [

@@ -95,7 +95,7 @@ export function useApi<T>(
     isLoading,
     isValidating,
     mutate,
-    /** データが空であるか（エラーではなくデータが0件） */
-    isEmpty: !isLoading && !error && data != null,
+    /** データが取得済みであるか（ローディング完了かつエラーなし） */
+    hasData: !isLoading && !error && data != null,
   };
 }

@@ -154,7 +154,7 @@ function MarketContent() {
           f.latitude !== 0 &&
           f.longitude !== 0
       )
-      .map((f: any) => ({
+      .map((f) => ({
         lat: Number(f.latitude),
         lng: Number(f.longitude),
         name: f.jigyosho_name || f.facility_name || f["事業所名"] || "",

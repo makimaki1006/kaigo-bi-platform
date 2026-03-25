@@ -17,6 +17,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import { CHART_COLORS } from "@/lib/constants";
+import type { ChartDataPoint, TooltipPayloadEntry } from "@/lib/types";
 
 /** カスタムTooltip: ダーク背景 */
 function CustomTooltip({
@@ -26,7 +27,7 @@ function CustomTooltip({
   formatter,
 }: {
   active?: boolean;
-  payload?: any[];
+  payload?: TooltipPayloadEntry[];
   label?: string;
   formatter?: (value: number) => string;
 }) {
@@ -35,7 +36,7 @@ function CustomTooltip({
   return (
     <div className="bg-gray-900 text-white px-3 py-2 rounded-lg shadow-xl text-xs">
       <p className="text-gray-300 mb-1">{label}</p>
-      {payload.map((entry: any, index: number) => {
+      {payload.map((entry: TooltipPayloadEntry, index: number) => {
         const value = entry.value as number;
         const displayValue = formatter
           ? formatter(value)
@@ -63,7 +64,7 @@ interface LineSeriesConfig {
 
 interface LineChartProps {
   /** チャートデータ */
-  data: any[];
+  data: ChartDataPoint[];
   /** X軸のキー */
   xKey: string;
   /** 線の定義（複数系列対応） */

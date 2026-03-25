@@ -24,13 +24,25 @@ from pathlib import Path
 
 import requests
 
+from turso_helpers import (
+    get_turso_config,
+    get_headers,
+    execute_sql as _execute_sql_raw,
+    execute_single as _execute_single_raw,
+    make_arg,
+    extract_prefecture,
+    classify_corp_type,
+    parse_int,
+    compute_derived,
+)
+
 # Windows環境でのUTF-8出力対応
 sys.stdout.reconfigure(encoding="utf-8")
 
 # ============================================================
 # パス定義
 # ============================================================
-BASE_DIR = Path(r"C:\Users\fuji1\OneDrive\デスクトップ\Salesforce_List")
+BASE_DIR = Path(__file__).resolve().parent.parent
 SCRAPING_DIR = BASE_DIR / "data" / "output" / "kaigo_scraping"
 EXISTING_CSV = SCRAPING_DIR / "kaigo_fast_20260324.csv"
 DELTA_PATTERN = str(SCRAPING_DIR / "kihon_delta_*.csv")
@@ -39,148 +51,49 @@ DELTA_PATTERN = str(SCRAPING_DIR / "kihon_delta_*.csv")
 BATCH_SIZE = 50
 
 # ============================================================
-# Turso接続設定
+# Turso接続設定（環境変数必須、フォールバックなし）
 # ============================================================
-TURSO_URL = os.environ.get("TURSO_DATABASE_URL", "https://cw-makimaki1006.aws-ap-northeast-1.turso.io")
-TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN")
+TURSO_URL = None
+TURSO_TOKEN = None
+HEADERS = {}
 
 
 def check_env():
-    """環境変数チェック"""
-    if not TURSO_TOKEN:
-        print("エラー: TURSO_AUTH_TOKEN 環境変数が設定されていません。")
+    """環境変数チェック・Turso接続情報を初期化"""
+    global TURSO_URL, TURSO_TOKEN, HEADERS
+    try:
+        TURSO_URL, TURSO_TOKEN = get_turso_config()
+        HEADERS = get_headers(TURSO_TOKEN)
+    except ValueError as e:
+        print(f"エラー: {e}")
+        print("  PowerShell: $env:TURSO_DATABASE_URL = 'https://...'")
         print("  PowerShell: $env:TURSO_AUTH_TOKEN = 'your-token'")
         sys.exit(1)
 
 
-HEADERS = {}
-
-
 def init_headers():
-    """Turso APIヘッダーを初期化"""
-    global HEADERS
-    HEADERS = {
-        "Authorization": f"Bearer {TURSO_TOKEN}",
-        "Content-Type": "application/json",
-    }
+    """後方互換性のためのスタブ（check_envで初期化済み）"""
+    pass
 
 
 # ============================================================
-# Turso APIヘルパー
+# Turso APIヘルパー（turso_helpers のラッパー）
 # ============================================================
 def execute_sql(statements: list[dict]) -> dict:
     """Turso HTTP API v2 pipeline でSQLを実行"""
-    payload = {"requests": statements}
-    resp = requests.post(f"{TURSO_URL}/v2/pipeline", headers=HEADERS, json=payload, timeout=120)
-    if resp.status_code != 200:
-        print(f"HTTP {resp.status_code}: {resp.text[:500]}")
-        raise Exception(f"Turso APIエラー: HTTP {resp.status_code}")
-    return resp.json()
+    return _execute_sql_raw(TURSO_URL, HEADERS, statements)
 
 
 def execute_single(sql: str, args: list = None) -> dict:
     """単一SQLを実行"""
-    stmt = {"type": "execute", "stmt": {"sql": sql}}
-    if args:
-        stmt["stmt"]["args"] = args
-    return execute_sql([stmt])
-
-
-def make_arg(value):
-    """Turso API用の引数を作成"""
-    if value is None:
-        return {"type": "null"}
-    elif isinstance(value, int):
-        return {"type": "integer", "value": str(value)}
-    elif isinstance(value, float):
-        return {"type": "float", "value": value}
-    else:
-        return {"type": "text", "value": str(value)}
+    return _execute_single_raw(TURSO_URL, HEADERS, sql, args)
 
 
 # ============================================================
-# ユーティリティ関数
+# ユーティリティ関数（turso_helpersから再エクスポート済み）
+# compute_turnover_rate, compute_fulltime_ratio, compute_years_in_business は
+# compute_derived() 経由で使用
 # ============================================================
-def extract_prefecture(address: str) -> str | None:
-    """住所から都道府県を抽出"""
-    if not address:
-        return None
-    cleaned = re.sub(r"^〒?\d{3}-?\d{4}\s*", "", address)
-    match = re.match(r"(東京都|北海道|(?:京都|大阪)府|.{2,3}県)", cleaned)
-    return match.group(1) if match else None
-
-
-def classify_corp_type(corp_name: str) -> str:
-    """法人名から法人種別を推定"""
-    if not corp_name:
-        return "不明"
-    patterns = {
-        "社会福祉法人": "社会福祉法人",
-        "医療法人": "医療法人",
-        "株式会社": "株式会社",
-        "有限会社": "有限会社",
-        "合同会社": "合同会社",
-        "NPO法人": "NPO法人",
-        "特定非営利活動法人": "NPO法人",
-        "一般社団法人": "一般社団法人",
-        "一般財団法人": "一般財団法人",
-        "公益社団法人": "公益社団法人",
-        "公益財団法人": "公益財団法人",
-        "合資会社": "合資会社",
-        "地方公共団体": "地方公共団体",
-    }
-    for keyword, corp_type in patterns.items():
-        if keyword in corp_name:
-            return corp_type
-    return "その他"
-
-
-def parse_int(value: str) -> int | None:
-    """文字列を整数に変換（空やエラーはNone）"""
-    if not value or not value.strip():
-        return None
-    try:
-        return int(float(value.strip()))
-    except (ValueError, TypeError):
-        return None
-
-
-def parse_float(value: str) -> float | None:
-    """文字列を浮動小数点に変換"""
-    if not value or not value.strip():
-        return None
-    try:
-        return float(value.strip())
-    except (ValueError, TypeError):
-        return None
-
-
-def compute_turnover_rate(staff_total: int | None, left_last_year: int | None) -> float | None:
-    """離職率: 退職数 / (合計 + 退職数)"""
-    if staff_total is None or left_last_year is None:
-        return None
-    denominator = staff_total + left_last_year
-    if denominator <= 0:
-        return None
-    return round(left_last_year / denominator, 4)
-
-
-def compute_fulltime_ratio(staff_fulltime: int | None, staff_total: int | None) -> float | None:
-    """常勤比率: 常勤 / 合計"""
-    if staff_fulltime is None or staff_total is None or staff_total <= 0:
-        return None
-    return round(staff_fulltime / staff_total, 4)
-
-
-def compute_years_in_business(start_date: str) -> int | None:
-    """事業年数: 2026 - 事業開始年"""
-    if not start_date or not start_date.strip():
-        return None
-    try:
-        year = int(start_date.strip().split("/")[0])
-        return 2026 - year
-    except (ValueError, IndexError):
-        return None
 
 
 def find_latest_delta() -> Path | None:
@@ -491,19 +404,8 @@ def _upload_batch(rows: list[dict], all_csv_cols: list[str], insert_sql: str) ->
                 else:
                     args.append(make_arg(val))
 
-        # 派生カラム計算
-        address = row.get("住所", "")
-        corp_name = row.get("法人名", "")
-        staff_fulltime = parse_int(row.get("従業者_常勤", ""))
-        staff_total = parse_int(row.get("従業者_合計", ""))
-        left_last_year = parse_int(row.get("前年度退職数", ""))
-        start_date = row.get("事業開始日", "")
-
-        prefecture = extract_prefecture(address)
-        corp_type = classify_corp_type(corp_name) if corp_name else None
-        turnover_rate = compute_turnover_rate(staff_total, left_last_year)
-        fulltime_ratio = compute_fulltime_ratio(staff_fulltime, staff_total)
-        years_in_business = compute_years_in_business(start_date)
+        # 派生カラム計算（turso_helpers.compute_derived を使用）
+        prefecture, corp_type, turnover_rate, fulltime_ratio, years_in_business = compute_derived(row)
 
         args.append(make_arg(prefecture))
         args.append(make_arg(corp_type))

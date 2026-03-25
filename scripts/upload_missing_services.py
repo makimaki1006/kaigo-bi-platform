@@ -8,117 +8,36 @@ Turso DBに未アップロードのサービスCSVを追加アップロードす
 """
 
 import csv
-import re
 import sys
 import time
 import glob
 import os
 import requests
+from pathlib import Path
 
-TURSO_URL = os.environ.get("TURSO_DATABASE_URL", "https://cw-makimaki1006.aws-ap-northeast-1.turso.io")
-TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN")
-if not TURSO_TOKEN:
-    raise ValueError("TURSO_AUTH_TOKEN environment variable is required")
-HEADERS = {"Authorization": f"Bearer {TURSO_TOKEN}", "Content-Type": "application/json"}
+from turso_helpers import (
+    get_turso_config,
+    get_headers,
+    execute_sql as _execute_sql_raw,
+    execute_single as _execute_single_raw,
+    make_arg,
+    compute_derived,
+)
+
+TURSO_URL, TURSO_TOKEN = get_turso_config()
+HEADERS = get_headers(TURSO_TOKEN)
 BATCH_SIZE = 50
-CSV_DIR = r"C:\Users\fuji1\OneDrive\デスクトップ\Salesforce_List\data\output\kaigo_scraping\by_service"
+CSV_DIR = str(Path(__file__).resolve().parent.parent / "data" / "output" / "kaigo_scraping" / "by_service")
 
 
 def execute_sql(statements):
     """Turso Pipeline APIでSQL文を実行"""
-    resp = requests.post(f"{TURSO_URL}/v2/pipeline", headers=HEADERS, json={"requests": statements})
-    if resp.status_code != 200:
-        raise Exception(f"Turso APIエラー: HTTP {resp.status_code}: {resp.text[:300]}")
-    return resp.json()
+    return _execute_sql_raw(TURSO_URL, HEADERS, statements)
 
 
 def execute_single(sql, args=None):
     """単一SQL文を実行"""
-    stmt = {"type": "execute", "stmt": {"sql": sql}}
-    if args:
-        stmt["stmt"]["args"] = args
-    return execute_sql([stmt])
-
-
-def make_arg(value):
-    """Turso API用の引数フォーマット"""
-    if value is None:
-        return {"type": "null"}
-    elif isinstance(value, int):
-        return {"type": "integer", "value": str(value)}
-    elif isinstance(value, float):
-        return {"type": "float", "value": value}
-    else:
-        return {"type": "text", "value": str(value)}
-
-
-def extract_prefecture(address):
-    """住所から都道府県を抽出"""
-    if not address:
-        return None
-    cleaned = re.sub(r"^〒?\d{3}-?\d{4}\s*", "", address)
-    match = re.match(r"(東京都|北海道|(?:京都|大阪)府|.{2,3}県)", cleaned)
-    return match.group(1) if match else None
-
-
-def classify_corp_type(corp_name):
-    """法人名から法人種別を分類"""
-    if not corp_name:
-        return "不明"
-    for kw, ct in {"社会福祉法人": "社会福祉法人", "医療法人": "医療法人",
-                    "株式会社": "株式会社・有限会社等", "有限会社": "株式会社・有限会社等",
-                    "合同会社": "株式会社・有限会社等", "合資会社": "株式会社・有限会社等",
-                    "NPO法人": "NPO法人", "特定非営利活動法人": "NPO法人",
-                    "一般社団法人": "社団法人", "公益社団法人": "社団法人",
-                    "一般財団法人": "財団法人", "公益財団法人": "財団法人",
-                    "社会医療法人": "社会医療法人",
-                    "地方公共団体": "地方公共団体"}.items():
-        if kw in corp_name:
-            return ct
-    return "その他法人"
-
-
-def parse_int(value):
-    """文字列を整数に変換（空文字・不正値はNone）"""
-    if not value or not value.strip():
-        return None
-    try:
-        return int(float(value.strip()))
-    except (ValueError, TypeError):
-        return None
-
-
-def compute_derived(row):
-    """派生カラムを計算（元スクリプトと同一ロジック）"""
-    address = row.get("住所", "")
-    corp_name = row.get("法人名", "")
-    staff_fulltime = parse_int(row.get("従業者_常勤", ""))
-    staff_total = parse_int(row.get("従業者_合計", ""))
-    left_last_year = parse_int(row.get("前年度退職数", ""))
-    start_date = row.get("事業開始日", "")
-
-    prefecture = extract_prefecture(address)
-    corp_type = classify_corp_type(corp_name)
-
-    turnover_rate = None
-    if staff_total is not None and left_last_year is not None:
-        denom = staff_total + left_last_year
-        if denom > 0:
-            turnover_rate = round(left_last_year / denom, 4)
-
-    fulltime_ratio = None
-    if staff_fulltime is not None and staff_total is not None and staff_total > 0:
-        fulltime_ratio = round(staff_fulltime / staff_total, 4)
-
-    years_in_business = None
-    if start_date and start_date.strip():
-        try:
-            year = int(start_date.strip().split("/")[0])
-            years_in_business = 2026 - year
-        except (ValueError, IndexError):
-            pass
-
-    return prefecture, corp_type, turnover_rate, fulltime_ratio, years_in_business
+    return _execute_single_raw(TURSO_URL, HEADERS, sql, args)
 
 
 def get_turso_service_counts():

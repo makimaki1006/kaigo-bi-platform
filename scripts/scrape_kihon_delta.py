@@ -516,6 +516,7 @@ def scrape_one_facility(pref_code, facility_code, service_code):
             return result
     except Exception as e:
         # リクエスト失敗
+        print(f"    kihon取得エラー ({facility_code}): {e}")
         return None
 
 

@@ -16,6 +16,7 @@ import {
   Legend,
 } from "recharts";
 import { CHART_COLORS } from "@/lib/constants";
+import type { ChartDataPoint } from "@/lib/types";
 
 interface RadarSeries {
   /** データキー */
@@ -28,7 +29,7 @@ interface RadarSeries {
 
 interface RadarChartProps {
   /** チャートデータ（各カテゴリの値を含むオブジェクト配列） */
-  data: any[];
+  data: ChartDataPoint[];
   /** カテゴリ名のキー */
   categoryKey: string;
   /** 表示するシリーズ定義 */

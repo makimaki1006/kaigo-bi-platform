@@ -14,6 +14,7 @@ import {
   Legend,
 } from "recharts";
 import { CHART_COLORS } from "@/lib/constants";
+import type { ChartDataPoint, TooltipPayloadEntry } from "@/lib/types";
 
 /** カスタムTooltip: ダーク背景 */
 function CustomTooltip({
@@ -22,7 +23,7 @@ function CustomTooltip({
   total,
 }: {
   active?: boolean;
-  payload?: any[];
+  payload?: TooltipPayloadEntry[];
   total: number;
 }) {
   if (!active || !payload || payload.length === 0) return null;
@@ -43,7 +44,7 @@ function CustomTooltip({
 
 interface DonutChartProps {
   /** チャートデータ */
-  data: any[];
+  data: ChartDataPoint[];
   /** 名前のキー */
   nameKey: string;
   /** 値のキー */

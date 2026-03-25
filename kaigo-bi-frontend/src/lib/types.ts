@@ -102,6 +102,7 @@ export interface ColumnDef<T> {
   label: string;
   sortable?: boolean;
   width?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   render?: (value: any, row: T) => React.ReactNode;
 }
 
@@ -151,7 +152,7 @@ export interface UserCreateRequest {
   email: string;
   name: string;
   password: string;
-  role: string;
+  role: "admin" | "consultant" | "sales" | "viewer";
   expires_at: string | null;
 }
 
@@ -160,7 +161,7 @@ export interface UserUpdateRequest {
   email?: string;
   name?: string;
   password?: string;
-  role?: string;
+  role?: "admin" | "consultant" | "sales" | "viewer";
   expires_at?: string | null;
   is_active?: boolean;
 }
@@ -988,4 +989,27 @@ export interface ExternalVacancyStats {
   new_facility_count: number | null;
   vacancy_rate: number | null;
   growth_rate: number | null;
+}
+
+// ===================================================
+// チャートコンポーネント共通型
+// ===================================================
+
+/** チャートデータポイントの汎用型 */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type ChartDataPoint = Record<string, any>;
+
+/** Rechartsのカスタムtooltipのpayload型 */
+export interface TooltipPayloadEntry {
+  name?: string;
+  value?: number | string;
+  color?: string;
+  dataKey?: string;
+  payload?: ChartDataPoint;
+}
+
+/** 散布図のカスタムtooltipのprops型 */
+export interface ScatterTooltipProps {
+  active?: boolean;
+  payload?: TooltipPayloadEntry[];
 }

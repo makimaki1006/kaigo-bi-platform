@@ -16,10 +16,42 @@ import {
   ZAxis,
 } from "recharts";
 import { CHART_COLORS } from "@/lib/constants";
+import type { ChartDataPoint, ScatterTooltipProps } from "@/lib/types";
+
+/** 散布図のカスタムツールチップ生成関数 */
+function createCustomTooltip(
+  xKey: string,
+  yKey: string,
+  xLabel?: string,
+  yLabel?: string,
+  nameKey?: string,
+  tooltipFormatter?: (value: number, name: string) => string
+) {
+  return function ScatterCustomTooltip({ active, payload }: ScatterTooltipProps) {
+    if (!active || !payload || payload.length === 0) return null;
+    const item = payload[0].payload as ChartDataPoint | undefined;
+    if (!item) return null;
+    const xVal = item[xKey];
+    const yVal = item[yKey];
+    return (
+      <div className="bg-white border border-gray-200 rounded-lg shadow-sm px-3 py-2 text-xs">
+        {nameKey && item[nameKey] && (
+          <p className="font-semibold text-gray-700 mb-1">{String(item[nameKey])}</p>
+        )}
+        <p className="text-gray-600">
+          {xLabel || xKey}: {tooltipFormatter && typeof xVal === "number" ? tooltipFormatter(xVal, xKey) : (typeof xVal === "number" ? xVal.toLocaleString("ja-JP") : String(xVal ?? ""))}
+        </p>
+        <p className="text-gray-600">
+          {yLabel || yKey}: {tooltipFormatter && typeof yVal === "number" ? tooltipFormatter(yVal, yKey) : (typeof yVal === "number" ? yVal.toLocaleString("ja-JP") : String(yVal ?? ""))}
+        </p>
+      </div>
+    );
+  };
+}
 
 interface ScatterChartProps {
   /** チャートデータ */
-  data: any[];
+  data: ChartDataPoint[];
   /** X軸のキー */
   xKey: string;
   /** Y軸のキー */
@@ -57,24 +89,7 @@ export default function ScatterChart({
     );
   }
 
-  // カスタムツールチップ
-  const CustomTooltip = ({ active, payload }: any) => {
-    if (!active || !payload || payload.length === 0) return null;
-    const item = payload[0].payload;
-    return (
-      <div className="bg-white border border-gray-200 rounded-lg shadow-sm px-3 py-2 text-xs">
-        {nameKey && item[nameKey] && (
-          <p className="font-semibold text-gray-700 mb-1">{item[nameKey]}</p>
-        )}
-        <p className="text-gray-600">
-          {xLabel || xKey}: {tooltipFormatter ? tooltipFormatter(item[xKey], xKey) : item[xKey]?.toLocaleString("ja-JP")}
-        </p>
-        <p className="text-gray-600">
-          {yLabel || yKey}: {tooltipFormatter ? tooltipFormatter(item[yKey], yKey) : item[yKey]?.toLocaleString("ja-JP")}
-        </p>
-      </div>
-    );
-  };
+  const CustomTooltip = createCustomTooltip(xKey, yKey, xLabel, yLabel, nameKey, tooltipFormatter);
 
   return (
     <div style={{ overflow: "hidden" }}>

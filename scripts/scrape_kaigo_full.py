@@ -802,7 +802,7 @@ def scrape_facility(pref_code, facility_code, service_code, action_code, session
             time.sleep(REQUEST_DELAY)
         except Exception as e:
             # 個別ページの失敗は許容（他ページのデータは保持）
-            pass
+            print(f"    ページ {page_key} 取得エラー: {e}")
 
     return result if success else None
 
@@ -860,8 +860,8 @@ def process_service(service_code, target_prefs, mode, limit=0):
             results = prev.to_dict('records')
             already_done = set(prev['事業所番号'].tolist())
             print(f"  途中再開: {len(already_done)}件済み")
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"  進捗ファイル読み込みエラー: {e}")
 
     session = requests.Session()
     remaining = [(idx, row) for idx, row in df.iterrows()
