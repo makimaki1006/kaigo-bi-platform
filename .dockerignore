@@ -1,0 +1,47 @@
+# ============================================
+# .dockerignore（統合Dockerfile用）
+# Rust バックエンド + Next.js フロントエンドの両方をビルドするため
+# 不要なファイルのみ除外
+# ============================================
+
+# Git
+.git/
+.gitignore
+
+# ビルド成果物（Dockerコンテナ内で生成するため不要）
+kaigo-bi-frontend/node_modules/
+kaigo-bi-frontend/.next/
+kaigo-bi-backend/target/
+
+# ETL（デプロイ不要）
+kaigo-bi-etl/
+
+# Python関連
+*.pyc
+__pycache__/
+venv/
+.venv/
+*.egg-info/
+
+# スクリプト・ドキュメント（デプロイ不要）
+scripts/
+claudedocs/
+tests/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# ローカル環境変数
+.env
+.env.*
+config/.env
+
+# OS
+.DS_Store
+Thumbs.db
+
+# データファイル（Tursoから読み込むためローカルデータ不要）
+data/output/
+data/kaigo_survey/

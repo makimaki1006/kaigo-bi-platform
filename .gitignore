@@ -84,3 +84,23 @@ Thumbs.db
 *.bak
 *.tmp
 data/input/hellowork.csv
+
+# Rust
+target/
+*.db
+*.db-info
+*.db-shm
+*.db-wal
+
+# kaigo-bi データファイル（大容量）
+data/kaigo_survey/csv_cache/
+data/kaigo_survey/detail_*.html
+data/kaigo_survey/all_pages_raw.json
+data/kaigo_survey/kasan_matrix.txt
+data/kaigo_survey/parsed_fields_*.txt
+screenshots/
+kaigo-bi-frontend/.next/
+kaigo-bi-frontend/node_modules/
+kaigo-bi-backend/target/
+kaigo-bi-etl/__pycache__/
+*.parquet

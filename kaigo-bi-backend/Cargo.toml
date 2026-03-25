@@ -1,0 +1,28 @@
+[package]
+name = "kaigo-bi-backend"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+axum = "0.7"
+tokio = { version = "1", features = ["full"] }
+# polars削除: 全データアクセスをTurso SQLに移行
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+tower-http = { version = "0.5", features = ["cors"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
+chrono = { version = "0.4", features = ["serde"] }
+regex = "1"
+
+# 認証・DB
+libsql = "0.6"
+jsonwebtoken = "9"
+argon2 = "0.5"
+dotenvy = "0.15"
+uuid = { version = "1", features = ["v4"] }
+sha2 = "0.10"
+hmac = "0.12"
+pbkdf2 = { version = "0.12", features = ["simple"] }
+hex = "0.4"
+rand = "0.8"

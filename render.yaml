@@ -1,0 +1,37 @@
+# ============================================
+# Render Blueprint: 介護BIツール（統合サービス）
+# GitHub Actionsで事前ビルドしたDockerイメージを使用
+# ============================================
+# デプロイフロー:
+#   1. mainブランチにpush
+#   2. GitHub Actionsがイメージをghcr.ioにビルド・push
+#   3. RenderがGHCRからpre-builtイメージをpull
+# ============================================
+
+services:
+  - type: web
+    name: kaigo-bi
+    runtime: image
+    image:
+      url: ghcr.io/makimaki1006/kaigo-bi-platform:latest
+    region: singapore
+    plan: starter
+    numInstances: 1
+    healthCheckPath: /api/health
+    envVars:
+      # Turso (LibSQL) データベース接続
+      - key: TURSO_DATABASE_URL
+        sync: false
+      - key: TURSO_AUTH_TOKEN
+        sync: false
+      # JWT認証シークレット
+      - key: JWT_SECRET
+        sync: false
+      # アプリケーション設定
+      - key: KAIGO_PORT
+        value: "3001"
+      - key: KAIGO_DATA_PATH
+        value: "/data/facilities.parquet"
+      # Rust ログレベル
+      - key: RUST_LOG
+        value: "info"
