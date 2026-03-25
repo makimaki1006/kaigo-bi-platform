@@ -394,10 +394,15 @@ export interface TopCorpRow {
 
 /** 成長性 KPI（APIレスポンス） */
 export interface GrowthKpi {
-  recent_3yr_count: number;
-  avg_years_in_business: number;
-  net_growth_rate: number;
-  total_with_start_date: number;
+  recent_3yr_count?: number;
+  avg_years_in_business?: number;
+  net_growth_rate?: number;
+  total_with_start_date?: number;
+  /** APIが返す代替キー */
+  avg_years?: number;
+  new_facilities_5yr?: number;
+  oldest_years?: number;
+  total_facilities?: number;
 }
 
 /** 施設設立年推移（APIレスポンス: yearはnumber） */
@@ -821,6 +826,7 @@ export interface PrefectureQualityScoreExtended extends PrefectureQualityScore {
 export interface DashboardKpiExtended extends DashboardKpi {
   avg_quality_score: number | null;
   avg_kasan_count: number | null;
+  total_corps: number | null;
 }
 
 /** 人材分析KPI拡張版 */

@@ -35,6 +35,15 @@ export default function FilterPanel({
   const show = (key: string) =>
     !visibleFilters || visibleFilters.includes(key as never);
 
+  // アクティブなフィルタ数を計算
+  const activeCount =
+    filters.prefectures.length +
+    filters.serviceCodes.length +
+    filters.corpTypes.length +
+    (filters.employeeMin != null ? 1 : 0) +
+    (filters.employeeMax != null ? 1 : 0) +
+    (filters.keyword ? 1 : 0);
+
   return (
     <div
       className={`
@@ -134,6 +143,13 @@ export default function FilterPanel({
             maxPlaceholder="上限"
             compact={compact}
           />
+        </div>
+      )}
+
+      {/* アクティブフィルタ数表示 */}
+      {activeCount > 0 && (
+        <div className="text-xs text-indigo-600 font-medium self-center">
+          {activeCount}件のフィルタ適用中
         </div>
       )}
 

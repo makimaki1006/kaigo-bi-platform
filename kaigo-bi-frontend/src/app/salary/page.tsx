@@ -7,7 +7,7 @@
 //              /api/salary/by-prefecture
 // ===================================================
 
-import { Suspense, useMemo } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useApi } from "@/hooks/useApi";
 import { useFilters } from "@/hooks/useFilters";
 import type { SalaryKpi, JobTypeWage, PrefectureJobWage, ExternalSalaryBenchmark, ExternalWageHistory } from "@/lib/types";
@@ -35,6 +35,7 @@ const CARE_INDUSTRY_WAGE_FACTOR = 0.75;
 const TOTAL_FACILITIES_ESTIMATE = 223107;
 import DataPendingPlaceholder from "@/components/common/DataPendingPlaceholder";
 import ApiErrorBanner from "@/components/common/ApiErrorBanner";
+import { CHART_COLORS } from "@/lib/constants";
 
 /** 万円フォーマットのツールチップ */
 function tooltipManYen(v: number): string {
@@ -181,6 +182,9 @@ function SalaryContent() {
       }));
   }, [wageHistory]);
 
+  // 職種テーブル展開状態
+  const [jobTableExpanded, setJobTableExpanded] = useState(false);
+
   const apiError = kpiError || jobTypeError || prefError;
   const hasRealData = kpi?.avg_salary != null;
 
@@ -196,18 +200,12 @@ function SalaryContent() {
 
       {/* データ充填率バナー */}
       {dataCountInfo ? (
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-sm text-blue-700">
-          <span className="font-medium">賃金データ対象: </span>
-          {dataCountInfo.count.toLocaleString("ja-JP")}件 / {dataCountInfo.total.toLocaleString("ja-JP")}件
-          （充填率 {dataCountInfo.rate}%）
-          <span className="text-blue-500 ml-2">
-            - 賃金データが入力されている施設のみを集計しています
-          </span>
+        <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+          &#x2139;&#xFE0F; 賃金データ対象: {dataCountInfo.count.toLocaleString("ja-JP")}件（充填率{dataCountInfo.rate}%）。外部統計データも参考表示しています。
         </div>
       ) : !kpiLoading && !hasRealData ? (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-sm text-amber-700">
-          <span className="font-medium">注意: </span>
-          賃金データは現在準備中です。外部統計データを参考値として表示しています。
+        <div className="text-xs text-gray-500 bg-gray-50 border border-gray-200 rounded-lg px-3 py-2">
+          &#x2139;&#xFE0F; 賃金データが限定的なため、外部統計データを参考値として表示しています。
         </div>
       ) : null}
 
@@ -278,7 +276,7 @@ function SalaryContent() {
               data={[...jobTypeWages].sort((a, b) => b.avg_salary - a.avg_salary).slice(0, 20)}
               xKey="job_type"
               yKey="avg_salary"
-              color="#4f46e5"
+              color={CHART_COLORS[0]}
               tooltipFormatter={tooltipManYen}
               height={300}
             />
@@ -309,7 +307,7 @@ function SalaryContent() {
               }
               xKey="prefecture"
               yKey="avg_salary"
-              color="#0891b2"
+              color={CHART_COLORS[6]}
               horizontal
               tooltipFormatter={tooltipManYen}
               height={400}
@@ -323,7 +321,7 @@ function SalaryContent() {
                 data={externalWageData}
                 xKey="prefecture"
                 yKey="avg_wage"
-                color="#0891b2"
+                color={CHART_COLORS[6]}
                 horizontal
                 tooltipFormatter={(v) => `${v.toLocaleString("ja-JP")}円/月（推定）`}
                 height={400}
@@ -355,7 +353,7 @@ function SalaryContent() {
               xLabel="平均賃金（円）"
               yLabel="データ件数"
               nameKey="name"
-              color="#8b5cf6"
+              color={CHART_COLORS[5]}
               height={300}
               tooltipFormatter={(value, name) => {
                 if (name === "avg_salary") return tooltipManYen(value);
@@ -385,7 +383,7 @@ function SalaryContent() {
               data={histogramData}
               xKey="range"
               yKey="count"
-              color="#f59e0b"
+              color={CHART_COLORS[3]}
               tooltipFormatter={(v) => `${v}職種`}
               height={300}
             />
@@ -425,6 +423,7 @@ function SalaryContent() {
               <tbody>
                 {[...jobTypeWages]
                   .sort((a, b) => b.avg_salary - a.avg_salary)
+                  .slice(0, jobTableExpanded ? undefined : 10)
                   .map((w) => (
                     <tr key={w.job_type} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="px-4 py-2.5 text-gray-700 font-medium">{w.job_type}</td>
@@ -453,6 +452,16 @@ function SalaryContent() {
                   ))}
               </tbody>
             </table>
+            {jobTypeWages.length > 10 && (
+              <div className="flex justify-center pt-3 pb-1">
+                <button
+                  onClick={() => setJobTableExpanded((prev) => !prev)}
+                  className="text-sm text-indigo-600 hover:text-indigo-800 font-medium px-4 py-1.5 rounded-lg hover:bg-indigo-50 transition-colors"
+                >
+                  {jobTableExpanded ? "折りたたむ" : `もっと見る（全${jobTypeWages.length}件）`}
+                </button>
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-2 p-4">
@@ -474,7 +483,7 @@ function SalaryContent() {
             data={externalWageData}
             xKey="prefecture"
             yKey="avg_wage"
-            color="#94a3b8"
+            color={CHART_COLORS[6]}
             horizontal
             tooltipFormatter={(v) => `${v.toLocaleString("ja-JP")}円/月（全産業推定）`}
             height={400}
@@ -504,7 +513,7 @@ function SalaryContent() {
                 data={benchmarkChartData}
                 xKey="occupation"
                 yKey="avg_salary"
-                color="#059669"
+                color={CHART_COLORS[2]}
                 horizontal
                 tooltipFormatter={(v) => `${v.toLocaleString("ja-JP")}円`}
                 height={380}

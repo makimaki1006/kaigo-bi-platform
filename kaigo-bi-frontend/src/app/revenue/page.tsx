@@ -19,6 +19,7 @@ import ChartCard from "@/components/charts/ChartCard";
 import FilterPanel from "@/components/filters/FilterPanel";
 import DataPendingPlaceholder from "@/components/common/DataPendingPlaceholder";
 import ApiErrorBanner from "@/components/common/ApiErrorBanner";
+import { CHART_COLORS } from "@/lib/constants";
 
 /** 加算項目リスト（参考表示用） */
 const BONUS_ITEMS = [
@@ -183,7 +184,7 @@ function RevenueContent() {
           format="decimal"
           icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M8 12h8" /><path d="M12 8v8" /></svg>}
           accentColor="bg-emerald-500"
-          subtitle={kpi?.avg_kasan_count != null ? "実データ" : "データ準備中"}
+          subtitle={kpi?.avg_kasan_count != null ? "13種類の加算項目" : "データなし"}
           loading={kpiLoading}
           tooltip="13種類の介護報酬加算のうち取得している数"
         />
@@ -193,19 +194,19 @@ function RevenueContent() {
           format="percent"
           icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M3.85 8.62a4 4 0 0 1 4.78-2.65 4 4 0 0 1 2.9 2.4 4 4 0 0 1 2.9-2.4 4 4 0 0 1 4.78 2.65" /><path d="M12 2v2" /><path d="M3.85 8.62 12 22l8.15-13.38" /><path d="M12 14.5 7.5 8h9z" /></svg>}
           accentColor="bg-blue-500"
-          subtitle={kpi?.syogu_kaizen_rate != null ? "実データ" : "データ準備中"}
+          subtitle={kpi?.syogu_kaizen_rate != null ? "介護情報公表システム" : "データなし"}
           loading={kpiLoading}
         />
         {serviceConfig.isAvailable("occupancy") ? (
           <KpiCard
-            label="平均稼働率"
+            label="登録充足率"
             value={kpi?.avg_occupancy_rate ?? null}
             format="percent"
             icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12" /></svg>}
             accentColor="bg-amber-500"
-            subtitle={kpi?.avg_occupancy_rate != null ? "実データ" : "データ準備中"}
+            subtitle={kpi?.avg_occupancy_rate != null ? "利用者数/定員（100%超=登録過多）" : "データなし"}
             loading={kpiLoading}
-            tooltip="利用者数 / 定員"
+            tooltip="利用者数 / 定員。100%を超える場合は登録者数が定員を上回っていることを示します"
           />
         ) : (
           <UnavailableNotice message={serviceConfig.reason("occupancy")} />
@@ -217,7 +218,7 @@ function RevenueContent() {
             format="decimal"
             icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M22 21v-2a4 4 0 0 0-3-3.87" /><path d="M16 3.13a4 4 0 0 1 0 7.75" /></svg>}
             accentColor="bg-indigo-500"
-            subtitle={kpi?.avg_capacity != null ? "1施設あたり（実データ）" : "データ準備中"}
+            subtitle={kpi?.avg_capacity != null ? "1施設あたり" : "データなし"}
             loading={kpiLoading}
           />
         ) : (
@@ -238,12 +239,15 @@ function RevenueContent() {
             </div>
           ) : kasanRates && kasanRates.length > 0 ? (
             <BarChart
-              data={kasanRates}
+              data={kasanRates.map((d) => ({
+                ...d,
+                rate_pct: Math.round(d.rate * 1000) / 10,
+              }))}
               xKey="kasan_name"
-              yKey="rate"
-              color="#059669"
+              yKey="rate_pct"
+              color={CHART_COLORS[2]}
               horizontal
-              tooltipFormatter={(v) => `${(v * 100).toFixed(1)}%`}
+              tooltipFormatter={(v) => `${v.toFixed(1)}%`}
               height={400}
             />
           ) : (
@@ -267,10 +271,18 @@ function RevenueContent() {
               </div>
             ) : occupancyDist && occupancyDist.length > 0 ? (
               <BarChart
-                data={occupancyDist}
+                data={occupancyDist.map((d) => ({
+                  ...d,
+                  range: d.range
+                    .replace(/0-50%/, "~50%")
+                    .replace(/50-70%/, "50~70%")
+                    .replace(/70-90%/, "70~90%")
+                    .replace(/90-100%/, "90~100%")
+                    .replace(/100%~/, "100%~"),
+                }))}
                 xKey="range"
                 yKey="count"
-                color="#d97706"
+                color={CHART_COLORS[3]}
                 tooltipFormatter={(v) => `${v.toLocaleString("ja-JP")}施設`}
                 height={400}
               />

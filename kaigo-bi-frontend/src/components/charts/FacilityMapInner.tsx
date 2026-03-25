@@ -5,9 +5,10 @@
 // react-leaflet を使用、SSR無効で動的インポートされる
 // ===================================================
 
-import { MapContainer, TileLayer, CircleMarker, Popup } from "react-leaflet";
+import { MapContainer, TileLayer, CircleMarker, Popup, useMap } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
+import { useEffect } from "react";
 
 // Webpack環境でのLeafletアイコンパス問題を回避
 delete (L.Icon.Default.prototype as any)._getIconUrl;
@@ -34,6 +35,19 @@ interface FacilityMapInnerProps {
   height: number;
 }
 
+/** マップリサイズ対応: コンテナサイズ変更時にタイル再描画 */
+function MapResizeHandler() {
+  const map = useMap();
+  useEffect(() => {
+    // 初回レンダリング後にinvalidateSizeを呼び出しタイルを確実に描画
+    const timer = setTimeout(() => {
+      map.invalidateSize();
+    }, 100);
+    return () => clearTimeout(timer);
+  }, [map]);
+  return null;
+}
+
 export default function FacilityMapInner({ markers, height }: FacilityMapInnerProps) {
   return (
     <MapContainer
@@ -42,6 +56,7 @@ export default function FacilityMapInner({ markers, height }: FacilityMapInnerPr
       style={{ height: `${height}px`, width: "100%" }}
       scrollWheelZoom={true}
     >
+      <MapResizeHandler />
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

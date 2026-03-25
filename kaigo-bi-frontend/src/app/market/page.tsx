@@ -92,26 +92,35 @@ function MarketContent() {
     [prefData]
   );
 
-  // サービス種別上位12件（名前フォーマット適用）
+  // サービス種別上位12件（名前フォーマット適用、キー名の揺れに対応）
   const serviceTop12 = useMemo(
     () =>
       [...serviceData]
+        .map((item) => {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const raw = item as any;
+          return {
+            service_name: formatServiceName(raw.service_name ?? raw.name ?? ""),
+            facility_count: Number(raw.facility_count ?? raw.value ?? raw.count ?? 0),
+          };
+        })
+        .filter((item) => item.service_name && item.facility_count > 0)
         .sort((a, b) => b.facility_count - a.facility_count)
-        .slice(0, 12)
-        .map((item) => ({
-          ...item,
-          service_name: formatServiceName(item.service_name),
-        })),
+        .slice(0, 12),
     [serviceData]
   );
 
-  // 法人種別データ（ドーナツ用、表示名変換適用）
+  // 法人種別データ（ドーナツ用、表示名変換適用、キー名の揺れに対応）
   const donutData = useMemo(
     () =>
-      corpTypeData.map((item) => ({
-        name: formatCorpType(item.corp_type),
-        value: item.count,
-      })),
+      corpTypeData.map((item) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const raw = item as any;
+        return {
+          name: formatCorpType(raw.corp_type ?? raw.name ?? ""),
+          value: Number(raw.count ?? raw.value ?? 0),
+        };
+      }).filter((item) => item.name && item.value > 0),
     [corpTypeData]
   );
 

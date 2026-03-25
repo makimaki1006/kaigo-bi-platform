@@ -236,8 +236,8 @@ function GrowthContent() {
       ) : (
         <KpiCardGrid>
           <KpiCard
-            label="直近3年新規施設数"
-            value={kpi?.recent_3yr_count ?? null}
+            label="直近5年新規施設数"
+            value={kpi?.new_facilities_5yr ?? kpi?.recent_3yr_count ?? null}
             format="number"
             icon={IconNewFacility}
             accentColor="bg-emerald-500"
@@ -245,23 +245,29 @@ function GrowthContent() {
           />
           <KpiCard
             label="平均事業年数"
-            value={kpi?.avg_years_in_business ?? null}
+            value={kpi?.avg_years ?? kpi?.avg_years_in_business ?? null}
             format="decimal"
             icon={IconYears}
             accentColor="bg-blue-500"
             subtitle="事業開始日から算出"
           />
           <KpiCard
-            label="純増減率"
-            value={kpi?.net_growth_rate ?? null}
-            format="percent"
+            label="最長事業年数"
+            value={
+              (() => {
+                const v = kpi?.oldest_years ?? null;
+                if (v == null) return null;
+                return v > 100 ? 100 : v;
+              })()
+            }
+            format="decimal"
             icon={IconGrowthRate}
             accentColor="bg-indigo-500"
-            subtitle="直近3年設立数 / 全体数"
+            subtitle={kpi?.oldest_years != null && kpi.oldest_years > 100 ? "100年以上" : "最も長い事業継続年数"}
           />
           <KpiCard
-            label="事業開始日あり施設数"
-            value={kpi?.total_with_start_date ?? null}
+            label="総施設数"
+            value={kpi?.total_facilities ?? kpi?.total_with_start_date ?? null}
             format="number"
             icon={IconTarget}
             accentColor="bg-amber-500"

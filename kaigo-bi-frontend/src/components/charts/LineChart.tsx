@@ -122,7 +122,7 @@ export default function LineChart({
           dataKey={xKey}
           tick={{ fontSize: 11, fill: "#374151" }}
           interval={0}
-          angle={-45}
+          angle={-30}
           textAnchor="end"
           height={60}
         />

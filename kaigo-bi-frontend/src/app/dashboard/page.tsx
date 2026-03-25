@@ -9,11 +9,13 @@
 import { Suspense, useMemo } from "react";
 import { useApi } from "@/hooks/useApi";
 import { useFilters } from "@/hooks/useFilters";
-import type { DashboardKpi, DashboardKpiExtended, PrefectureSummary, ServiceSummary } from "@/lib/types";
+import type { DashboardKpi, DashboardKpiExtended, PrefectureSummary, ServiceSummary, CorpTypeSummary } from "@/lib/types";
 import { formatServiceName } from "@/lib/formatters";
+import { CHART_COLORS } from "@/lib/constants";
 import KpiCard from "@/components/data-display/KpiCard";
 import KpiCardGrid from "@/components/data-display/KpiCardGrid";
 import BarChart from "@/components/charts/BarChart";
+import DonutChart from "@/components/charts/DonutChart";
 import ChartCard from "@/components/charts/ChartCard";
 import FilterPanel from "@/components/filters/FilterPanel";
 import ApiErrorBanner from "@/components/common/ApiErrorBanner";
@@ -32,10 +34,10 @@ const IconStaff = (
   </svg>
 );
 
-/** KPIアイコン: 定員（ベッド） */
-const IconCapacity = (
+/** KPIアイコン: 法人数（ビジネスビル） */
+const IconCorps = (
   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5} aria-hidden="true">
-    <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 21v-4.875c0-.621.504-1.125 1.125-1.125h5.25c.621 0 1.125.504 1.125 1.125V21m0 0h4.5V3.545M12.75 21h7.5M10.5 21V3.545M3.545 21h6.955M3.545 3.545h16.91M3.545 3.545V21" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 21h16.5M4.5 3h15M5.25 3v18m13.5-18v18M9 6.75h1.5m-1.5 3h1.5m-1.5 3h1.5m3-6H15m-1.5 3H15m-1.5 3H15M9 21v-3.375c0-.621.504-1.125 1.125-1.125h3.75c.621 0 1.125.504 1.125 1.125V21" />
   </svg>
 );
 
@@ -68,9 +70,15 @@ function DashboardContent() {
     apiParams
   );
 
-  const apiError = kpiError || prefError || serviceError;
+  // 法人種別別データ取得（ドーナツチャート用）
+  const { data: byCorpType, error: corpTypeError, isLoading: corpTypeLoading } = useApi<CorpTypeSummary[]>(
+    "/api/market/corp-type-donut",
+    apiParams
+  );
 
-  const isLoading = kpiLoading || prefLoading || serviceLoading;
+  const apiError = kpiError || prefError || serviceError || corpTypeError;
+
+  const isLoading = kpiLoading || prefLoading || serviceLoading || corpTypeLoading;
   const prefData = byPrefecture ?? [];
   const serviceData = byService ?? [];
 
@@ -126,6 +134,15 @@ function DashboardContent() {
           accentColor="bg-brand-500"
         />
         <KpiCard
+          label="法人数"
+          value={kpi?.total_corps ?? null}
+          format="number"
+          icon={IconCorps}
+          subtitle="ユニーク法人番号数"
+          loading={kpiLoading}
+          accentColor="bg-emerald-500"
+        />
+        <KpiCard
           label="平均従業者数"
           value={kpi?.avg_staff}
           format="decimal"
@@ -133,15 +150,6 @@ function DashboardContent() {
           subtitle="1施設あたり"
           loading={kpiLoading}
           accentColor="bg-sky-500"
-        />
-        <KpiCard
-          label="平均定員"
-          value={kpi?.avg_capacity}
-          format="decimal"
-          icon={IconCapacity}
-          subtitle="1施設あたり"
-          loading={kpiLoading}
-          accentColor="bg-emerald-500"
         />
         <KpiCard
           label="平均離職率"
@@ -155,44 +163,6 @@ function DashboardContent() {
         />
       </KpiCardGrid>
 
-      {/* 新規データKPI（データがある場合のみ表示） */}
-      {(kpi?.avg_quality_score != null || kpi?.avg_kasan_count != null) && (
-        <div className="grid grid-cols-2 gap-4">
-          {kpi?.avg_quality_score != null && (
-            <KpiCard
-              label="平均品質スコア"
-              value={kpi.avg_quality_score}
-              format="decimal"
-              icon={
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5} aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
-                </svg>
-              }
-              subtitle="100点満点"
-              loading={kpiLoading}
-              accentColor="bg-indigo-500"
-              tooltip="安全管理・品質管理・人材安定性・収益安定性の100点満点評価"
-            />
-          )}
-          {kpi?.avg_kasan_count != null && (
-            <KpiCard
-              label="平均加算取得数"
-              value={kpi.avg_kasan_count}
-              format="decimal"
-              icon={
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5} aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              }
-              subtitle="13項目中"
-              loading={kpiLoading}
-              accentColor="bg-emerald-500"
-              tooltip="13種類の介護報酬加算のうち取得している数"
-            />
-          )}
-        </div>
-      )}
-
       {/* チャートエリア */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* 都道府県別施設数 */}
@@ -205,7 +175,7 @@ function DashboardContent() {
             data={prefectureTop15}
             xKey="prefecture"
             yKey="facility_count"
-            color="#4f46e5"
+            color={CHART_COLORS[0]}
             height={360}
           />
         </ChartCard>
@@ -220,10 +190,63 @@ function DashboardContent() {
             data={serviceTop10}
             xKey="service_name"
             yKey="facility_count"
-            color="#0284c7"
+            color={CHART_COLORS[1]}
             horizontal
             height={360}
           />
+        </ChartCard>
+
+        {/* 法人種別ドーナツチャート */}
+        <ChartCard
+          title="法人種別構成"
+          subtitle="法人種別ごとの施設数割合"
+          loading={corpTypeLoading}
+        >
+          <DonutChart
+            data={byCorpType ?? []}
+            nameKey="corp_type"
+            valueKey="count"
+            centerLabel="法人数"
+            height={360}
+          />
+        </ChartCard>
+
+        {/* サービス種別サマリーテーブル */}
+        <ChartCard
+          title="サービス種別概要"
+          subtitle={`上位${serviceTop10.length}種別の施設数・従業者数`}
+          loading={serviceLoading}
+        >
+          {serviceTop10.length > 0 ? (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 text-left">
+                    <th className="px-3 py-2 text-gray-500 font-medium">サービス種別</th>
+                    <th className="px-3 py-2 text-gray-500 font-medium text-right">施設数</th>
+                    <th className="px-3 py-2 text-gray-500 font-medium text-right">総従業者数</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {serviceTop10.map((s) => (
+                    <tr key={s.service_code} className="border-b border-gray-100 hover:bg-gray-50">
+                      <td className="px-3 py-2 text-gray-700">{s.service_name}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-gray-900 font-medium">
+                        {s.facility_count.toLocaleString("ja-JP")}
+                      </td>
+                      <td className="px-3 py-2 text-right tabular-nums text-gray-500">
+                        {s.total_staff.toLocaleString("ja-JP")}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-[300px] text-gray-400 text-sm">
+              データがありません
+            </div>
+          )}
         </ChartCard>
       </div>
     </div>

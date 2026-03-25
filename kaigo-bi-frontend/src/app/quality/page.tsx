@@ -6,7 +6,7 @@
 // 実API連携版
 // ===================================================
 
-import { Suspense } from "react";
+import { Suspense, useMemo } from "react";
 import { useApi } from "@/hooks/useApi";
 import { useFilters } from "@/hooks/useFilters";
 import { useServiceConfig } from "@/lib/service-config";
@@ -25,6 +25,7 @@ import ChartCard from "@/components/charts/ChartCard";
 import FilterPanel from "@/components/filters/FilterPanel";
 import DataPendingPlaceholder from "@/components/common/DataPendingPlaceholder";
 import ApiErrorBanner from "@/components/common/ApiErrorBanner";
+import { CHART_COLORS } from "@/lib/constants";
 
 /** スコア分布の型（バックエンド QualityScoreDistribution に対応） */
 interface QualityScoreDist {
@@ -74,8 +75,9 @@ function QualityContent() {
     apiParams
   );
 
-  // 4カテゴリレーダー
-  const { data: radarData, error: radarError, isLoading: radarLoading } = useApi<QualityCategoryRadar[]>(
+  // 4カテゴリレーダー（APIがflat objectまたは配列を返す可能性があるため両方対応）
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const { data: radarDataRaw, error: radarError, isLoading: radarLoading } = useApi<any>(
     "/api/quality/category-radar",
     apiParams
   );
@@ -88,11 +90,37 @@ function QualityContent() {
 
   const apiError = kpiError || scoreDistError || rankDistError || radarError || prefError;
 
+  // APIレスポンスがflat object({hr, operations, quality, safety})の場合、配列に変換
+  const RADAR_CATEGORY_MAP: Record<string, string> = {
+    safety: "安全管理",
+    quality: "品質管理",
+    hr: "人材安定性",
+    operations: "収益効率",
+  };
+
+  const radarData: QualityCategoryRadar[] = useMemo(() => {
+    if (!radarDataRaw) return [];
+    // 既に配列形式の場合はそのまま使用
+    if (Array.isArray(radarDataRaw)) return radarDataRaw;
+    // flat object形式の場合は配列に変換
+    if (typeof radarDataRaw === "object") {
+      return Object.entries(radarDataRaw)
+        .filter(([key]) => key in RADAR_CATEGORY_MAP)
+        .map(([key, value]) => ({
+          category: RADAR_CATEGORY_MAP[key] || key,
+          score: Number(value) || 0,
+          fullMark: 30,
+        }));
+    }
+    return [];
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [radarDataRaw]);
+
   // KPIがAPIから取得できたか
   const kpiFromApi = kpi != null;
   const hasScoreDist = scoreDist != null && scoreDist.length > 0;
   const hasRankDist = rankDist != null && rankDist.length > 0;
-  const hasRadarData = radarData != null && radarData.length > 0;
+  const hasRadarData = radarData.length > 0;
 
   return (
     <div className="space-y-6">
@@ -141,7 +169,7 @@ function QualityContent() {
             format={kpi?.avg_quality_score != null ? "decimal" : "percent"}
             icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" /></svg>}
             accentColor="bg-indigo-500"
-            subtitle={kpi?.avg_quality_score != null ? "100点満点（実データ）" : kpi?.avg_profit_ratio != null ? "損益差額比率（実データ）" : "データ準備中"}
+            subtitle={kpi?.avg_quality_score != null ? "100点満点評価" : kpi?.avg_profit_ratio != null ? "損益差額比率" : "データなし"}
             loading={kpiLoading}
             tooltip="安全管理・品質管理・人材安定性・収益安定性の100点満点評価"
           />
@@ -154,7 +182,7 @@ function QualityContent() {
           format="percent"
           icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" /><path d="m9 12 2 2 4-4" /></svg>}
           accentColor="bg-emerald-500"
-          subtitle={kpi?.bcp_rate != null ? "実データ" : "データ準備中"}
+          subtitle={kpi?.bcp_rate != null ? "介護情報公表システム" : "データなし"}
           loading={kpiLoading}
           tooltip="BCP(事業継続計画): 災害・感染症等で事業が中断した際の復旧計画の策定状況"
         />
@@ -164,7 +192,7 @@ function QualityContent() {
           format="percent"
           icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><rect width="20" height="14" x="2" y="3" rx="2" /><line x1="8" x2="16" y1="21" y2="21" /><line x1="12" x2="12" y1="17" y2="21" /></svg>}
           accentColor="bg-blue-500"
-          subtitle={kpi?.ict_rate != null ? "実データ" : "データ準備中"}
+          subtitle={kpi?.ict_rate != null ? "介護情報公表システム" : "データなし"}
           loading={kpiLoading}
           tooltip="ICT(情報通信技術): 介護記録ソフト・見守りセンサー等のテクノロジー活用状況"
         />
@@ -175,7 +203,7 @@ function QualityContent() {
             format="percent"
             icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>}
             accentColor="bg-amber-500"
-            subtitle={kpi?.third_party_rate != null ? "実データ" : "データ準備中"}
+            subtitle={kpi?.third_party_rate != null ? "介護情報公表システム" : "データなし"}
             loading={kpiLoading}
             tooltip="外部の第三者機関による福祉サービスの評価を受けた施設の割合"
           />
@@ -188,7 +216,7 @@ function QualityContent() {
           format="percent"
           icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10" /></svg>}
           accentColor="bg-teal-500"
-          subtitle={kpi?.insurance_rate != null ? "実データ" : "データ準備中"}
+          subtitle={kpi?.insurance_rate != null ? "介護情報公表システム" : "データなし"}
           loading={kpiLoading}
           tooltip="損害賠償責任保険への加入状況"
         />
@@ -247,7 +275,7 @@ function QualityContent() {
               data={scoreDist!}
               xKey="range"
               yKey="count"
-              color="#6366f1"
+              color={CHART_COLORS[0]}
               tooltipFormatter={(v) => `${v.toLocaleString("ja-JP")}施設`}
               height={300}
             />
@@ -272,10 +300,10 @@ function QualityContent() {
             </div>
           ) : hasRadarData ? (
             <RadarChart
-              data={radarData!}
+              data={radarData}
               categoryKey="category"
               series={[
-                { dataKey: "score", name: "平均スコア", color: "#6366f1" },
+                { dataKey: "score", name: "平均スコア", color: CHART_COLORS[0] },
               ]}
               height={320}
             />
@@ -290,8 +318,8 @@ function QualityContent() {
 
         {/* 3. 都道府県別品質スコア */}
         <ChartCard
-          title="都道府県別 平均品質スコア"
-          subtitle="地域差の可視化"
+          title="都道府県別 平均品質スコア（Top 15）"
+          subtitle="スコア上位15都道府県"
         >
           {prefLoading ? (
             <div className="flex items-center justify-center h-[300px] text-gray-400 text-sm">
@@ -302,14 +330,14 @@ function QualityContent() {
               data={
                 [...prefScores]
                   .sort((a, b) => b.avg_profit_ratio - a.avg_profit_ratio)
-                  .slice(0, 20)
+                  .slice(0, 15)
               }
               xKey="prefecture"
               yKey="avg_profit_ratio"
-              color="#059669"
+              color={CHART_COLORS[2]}
               horizontal
               tooltipFormatter={(v) => `${(v * 100).toFixed(1)}%`}
-              height={400}
+              height={420}
             />
           ) : (
             <DataPendingPlaceholder

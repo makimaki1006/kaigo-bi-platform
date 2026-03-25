@@ -31,6 +31,7 @@ import ChartCard from "@/components/charts/ChartCard";
 import FilterPanel from "@/components/filters/FilterPanel";
 import DataPendingPlaceholder from "@/components/common/DataPendingPlaceholder";
 import ApiErrorBanner from "@/components/common/ApiErrorBanner";
+import { CHART_COLORS } from "@/lib/constants";
 
 /** KPIアイコン: 離職率 */
 const IconTurnover = (
@@ -233,7 +234,7 @@ function WorkforceContent() {
             value={kpi?.avg_turnover_rate != null ? kpi.avg_turnover_rate : null}
             format="percent"
             icon={IconTurnover}
-            subtitle={kpi?.avg_turnover_rate != null ? "全施設平均（実データ）" : "データ準備中"}
+            subtitle={kpi?.avg_turnover_rate != null ? "全施設平均" : "データなし"}
             loading={kpiLoading}
             accentColor="bg-red-500"
             tooltip="前年度の退職者数 / (従業者数+退職者数)"
@@ -246,7 +247,7 @@ function WorkforceContent() {
           value={kpi?.avg_hire_rate != null ? kpi.avg_hire_rate : null}
           format="percent"
           icon={IconHiring}
-          subtitle={kpi?.avg_hire_rate != null ? "実データ" : "データ準備中"}
+          subtitle={kpi?.avg_hire_rate != null ? "全施設平均" : "データなし"}
           loading={kpiLoading}
           accentColor="bg-emerald-500"
         />
@@ -256,7 +257,7 @@ function WorkforceContent() {
             value={kpi?.avg_fulltime_ratio != null ? kpi.avg_fulltime_ratio : null}
             format="percent"
             icon={IconFulltime}
-            subtitle={kpi?.avg_fulltime_ratio != null ? "常勤 / 全従業者（実データ）" : "データ準備中"}
+            subtitle={kpi?.avg_fulltime_ratio != null ? "常勤 / 全従業者" : "データなし"}
             loading={kpiLoading}
             accentColor="bg-brand-500"
             tooltip="常勤従業者 / 全従業者"
@@ -270,7 +271,7 @@ function WorkforceContent() {
             value={kpi?.avg_experience_10yr_ratio != null ? kpi.avg_experience_10yr_ratio : null}
             format="percent"
             icon={IconExperience}
-            subtitle={kpi?.avg_experience_10yr_ratio != null ? "実データ" : "データ準備中"}
+            subtitle={kpi?.avg_experience_10yr_ratio != null ? "全施設平均" : "データなし"}
             loading={kpiLoading}
             accentColor="bg-amber-500"
           />
@@ -293,7 +294,7 @@ function WorkforceContent() {
                 data={turnoverDist}
                 xKey="range"
                 yKey="count"
-                color="#dc2626"
+                color={CHART_COLORS[4]}
                 tooltipFormatter={(v) => `${v.toLocaleString("ja-JP")}施設`}
                 height={300}
               />
@@ -322,7 +323,7 @@ function WorkforceContent() {
               data={sizeFulltimeData}
               xKey="size_group"
               series={[
-                { dataKey: "fulltime_pct", name: "常勤 (%)", color: "#4f46e5" },
+                { dataKey: "fulltime_pct", name: "常勤 (%)", color: CHART_COLORS[0] },
                 { dataKey: "parttime_pct", name: "非常勤 (%)", color: "#a5b4fc" },
               ]}
               height={300}
@@ -350,7 +351,7 @@ function WorkforceContent() {
               xLabel="施設数"
               yLabel="離職率(%)"
               nameKey="name"
-              color="#7c3aed"
+              color={CHART_COLORS[5]}
               height={300}
             />
           ) : (
@@ -373,7 +374,7 @@ function WorkforceContent() {
               data={prefTurnoverTop15}
               xKey="prefecture"
               yKey="turnover_rate"
-              color="#d97706"
+              color={CHART_COLORS[3]}
               horizontal
               tooltipFormatter={(v) => `${v}%`}
               height={420}
@@ -399,7 +400,7 @@ function WorkforceContent() {
               data={sizeData}
               xKey="size_group"
               yKey="turnover_rate"
-              color="#4f46e5"
+              color={CHART_COLORS[0]}
               tooltipFormatter={(v) => `${v}%`}
               height={280}
             />
@@ -424,7 +425,7 @@ function WorkforceContent() {
                 data={experienceDist}
                 xKey="range"
                 yKey="count"
-                color="#d97706"
+                color={CHART_COLORS[3]}
                 tooltipFormatter={(v) => `${v.toLocaleString("ja-JP")}施設`}
                 height={300}
               />
@@ -457,7 +458,7 @@ function WorkforceContent() {
                 xLabel="経験10年以上割合(%)"
                 yLabel="離職率(%)"
                 nameKey="prefecture"
-                color="#059669"
+                color={CHART_COLORS[2]}
                 height={300}
               />
             ) : (

@@ -94,7 +94,7 @@ export default function ScatterChart({
   return (
     <div style={{ overflow: "hidden" }}>
     <ResponsiveContainer width="100%" height={height}>
-      <RechartsScatterChart margin={{ top: 10, right: 20, bottom: 30, left: 10 }}>
+      <RechartsScatterChart margin={{ top: 10, right: 20, bottom: 40, left: 20 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
         <XAxis
           type="number"
@@ -110,7 +110,7 @@ export default function ScatterChart({
           tick={{ fontSize: 11, fill: "#6b7280" }}
           label={yLabel ? { value: yLabel, angle: -90, position: "insideLeft", offset: 0, fontSize: 11, fill: "#6b7280" } : undefined}
         />
-        <ZAxis range={[40, 120]} />
+        <ZAxis range={[60, 140]} />
         <Tooltip content={<CustomTooltip />} />
         <Scatter data={data} fill={color} fillOpacity={0.6} />
       </RechartsScatterChart>

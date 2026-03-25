@@ -105,7 +105,7 @@ export default function BarChart({
         <RechartsBarChart
           data={data}
           layout="vertical"
-          margin={{ top: 5, right: 30, left: 100, bottom: 5 }}
+          margin={{ top: 5, right: 30, left: 120, bottom: 5 }}
         >
           <defs>
             <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
@@ -126,9 +126,9 @@ export default function BarChart({
           <YAxis
             type="category"
             dataKey={xKey}
-            tick={{ fontSize: 10, fill: "#374151" }}
-            width={90}
-            tickFormatter={(v: string) => v.length > 10 ? v.slice(0, 10) + "..." : v}
+            tick={{ fontSize: 11, fill: "#374151" }}
+            width={120}
+            tickFormatter={(v: string) => v.length > 12 ? v.slice(0, 12) + "..." : v}
           />
           <Tooltip
             content={
@@ -171,12 +171,12 @@ export default function BarChart({
         />
         <XAxis
           dataKey={xKey}
-          tick={{ fontSize: 10, fill: "#374151" }}
+          tick={{ fontSize: 11, fill: "#374151" }}
           interval={0}
-          angle={-45}
+          angle={-30}
           textAnchor="end"
           height={80}
-          tickFormatter={(v: string) => v.length > 8 ? v.slice(0, 8) + "..." : v}
+          tickFormatter={(v: string) => v.length > 10 ? v.slice(0, 10) + "..." : v}
         />
         <YAxis
           tick={{ fontSize: 11, fill: "#6b7280" }}
