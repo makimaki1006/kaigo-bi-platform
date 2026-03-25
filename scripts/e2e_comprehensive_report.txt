@@ -1,0 +1,77 @@
+
+====================================================================
+E2E COMPREHENSIVE TEST REPORT - 2026-03-25 14:25
+====================================================================
+
+[API Tests] 18/18 PASS
+    PASS /api/dashboard/kpi  -- total_facilities=223103
+    PASS /api/dashboard/by-prefecture  -- 配列長=47
+    PASS /api/dashboard/by-service  -- 配列長=34
+    PASS /api/salary/kpi  -- avg_salary=240793.0
+    PASS /api/salary/by-job-type  -- 配列長=68
+    PASS /api/workforce/kpi  -- avg_turnover_rate=0.1265
+    PASS /api/market/choropleth  -- 配列長=47
+    PASS /api/market/by-service-bar  -- 配列長=34
+    PASS /api/market/corp-type-donut  -- 配列長=8
+    PASS /api/quality/kpi  -- keys=['avg_experience_10yr_ratio', 'avg_quality_score', 'bcp_rate', 'ict_rate', 'insurance_rate']
+    PASS /api/revenue/kpi  -- keys=['avg_capacity', 'avg_kasan_count', 'avg_occupancy_rate', 'avg_quality_score', 'avg_users']
+    PASS /api/revenue/kasan-rates  -- 配列長=13
+    PASS /api/growth/kpi  -- keys=['avg_years', 'new_facilities_5yr', 'oldest_years', 'total_facilities']
+    PASS /api/corp-group/kpi  -- keys=['avg_facilities_per_corp', 'max_facilities', 'multi_facility_corps', 'total_corps']
+    PASS /api/corp-group/top-corps  -- 配列長=20
+    PASS /api/external/service-portfolio  -- 配列長=50
+    PASS /api/ma/screening  -- 要素数=3
+    PASS /api/external/prefecture-stats  -- 配列長=47
+
+[Page Data Tests] 8/10 FAIL
+    FAIL PageData /dashboard  -- 本文長 734 < 2000
+    PASS PageData /salary  -- 本文長=3661, charts=615
+    PASS PageData /workforce  -- 本文長=1254, charts=679
+    PASS PageData /market  -- 本文長=1354, charts=563
+    PASS PageData /quality  -- 本文長=1118, charts=96
+    PASS PageData /revenue  -- 本文長=1052, charts=159
+    FAIL PageData /service-portfolio  -- 裸サービスコード検出: ['211'] (計1セル) - サービス名に変換されていない
+    PASS PageData /corp-group  -- 本文長=6476
+    PASS PageData /growth  -- 本文長=2367
+    PASS PageData /ma-screening  -- 本文長=8328
+
+[Layout Tests] 4/5 FAIL
+    PASS Layout /ma-screening  -- レイアウト問題なし
+    PASS Layout /dashboard  -- レイアウト問題なし
+    PASS Layout /service-portfolio  -- レイアウト問題なし
+    FAIL Layout /salary  -- overflow検出(1要素): text.[object SVGAnimatedString] (scrollW=154 > clientW=87)
+    PASS Layout /workforce  -- レイアウト問題なし
+
+[Screenshot Tests] 9/10 FAIL
+    PASS Screenshot /dashboard  -- size=232930bytes, colors=24, elements=503
+    PASS Screenshot /salary  -- size=684488bytes, colors=26, elements=1544
+    PASS Screenshot /workforce  -- size=408124bytes, colors=26, elements=1153
+    PASS Screenshot /market  -- size=485025bytes, colors=23, elements=1105
+    PASS Screenshot /quality  -- size=268177bytes, colors=24, elements=496
+    PASS Screenshot /revenue  -- size=297574bytes, colors=24, elements=569
+    FAIL Screenshot /service-portfolio  -- 例外: Page.goto: Timeout 30000ms exceeded.
+Call log:
+  - navigating to "http://localhost:3000/service-portfolio", waiting until "networkidle"
+
+    PASS Screenshot /corp-group  -- size=608415bytes, colors=23, elements=742
+    PASS Screenshot /growth  -- size=340284bytes, colors=23, elements=1604
+    PASS Screenshot /ma-screening  -- size=1563270bytes, colors=24, elements=3050
+
+[Interaction Tests] 1/2 FAIL
+    PASS Dashboard prefecture filter  -- カスタムフィルタ操作後データ変化あり
+    FAIL Workforce service filter  -- サービスフィルタ要素が見つからない
+
+--------------------------------------------------------------------
+SUMMARY: 40/45 PASS, 5 FAIL
+--------------------------------------------------------------------
+
+=== FAILURES ===
+  FAIL PageData /dashboard: 本文長 734 < 2000
+  FAIL PageData /service-portfolio: 裸サービスコード検出: ['211'] (計1セル) - サービス名に変換されていない
+  FAIL Layout /salary: overflow検出(1要素): text.[object SVGAnimatedString] (scrollW=154 > clientW=87)
+  FAIL Screenshot /service-portfolio: 例外: Page.goto: Timeout 30000ms exceeded.
+Call log:
+  - navigating to "http://localhost:3000/service-portfolio", waiting until "networkidle"
+
+  FAIL Workforce service filter: サービスフィルタ要素が見つからない
+====================================================================
