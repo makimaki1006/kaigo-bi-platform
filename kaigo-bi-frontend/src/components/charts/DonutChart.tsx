@@ -21,10 +21,12 @@ function CustomTooltip({
   active,
   payload,
   total,
+  unit,
 }: {
   active?: boolean;
   payload?: TooltipPayloadEntry[];
   total: number;
+  unit?: string;
 }) {
   if (!active || !payload || payload.length === 0) return null;
 
@@ -36,7 +38,7 @@ function CustomTooltip({
     <div className="bg-gray-900 text-white px-3 py-2 rounded-lg shadow-xl text-xs">
       <p className="text-gray-300 mb-0.5">{item.name}</p>
       <p className="font-semibold tabular-nums">
-        {value.toLocaleString("ja-JP")} ({pct}%)
+        {value.toLocaleString("ja-JP")}{unit ? ` ${unit}` : ""} ({pct}%)
       </p>
     </div>
   );
@@ -55,6 +57,8 @@ interface DonutChartProps {
   centerLabel?: string;
   /** チャートの高さ */
   height?: number;
+  /** ツールチップに表示する単位（例: "施設", "法人"） */
+  unit?: string;
 }
 
 export default function DonutChart({
@@ -64,6 +68,7 @@ export default function DonutChart({
   colors = CHART_COLORS,
   centerLabel,
   height = 300,
+  unit,
 }: DonutChartProps) {
   if (!data || data.length === 0) {
     return (
@@ -108,7 +113,7 @@ export default function DonutChart({
             ))}
           </Pie>
           <Tooltip
-            content={<CustomTooltip total={total} />}
+            content={<CustomTooltip total={total} unit={unit} />}
           />
           <Legend
             verticalAlign="bottom"

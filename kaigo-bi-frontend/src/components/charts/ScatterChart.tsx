@@ -25,7 +25,9 @@ function createCustomTooltip(
   xLabel?: string,
   yLabel?: string,
   nameKey?: string,
-  tooltipFormatter?: (value: number, name: string) => string
+  tooltipFormatter?: (value: number, name: string) => string,
+  xUnit?: string,
+  yUnit?: string
 ) {
   return function ScatterCustomTooltip({ active, payload }: ScatterTooltipProps) {
     if (!active || !payload || payload.length === 0) return null;
@@ -33,16 +35,23 @@ function createCustomTooltip(
     if (!item) return null;
     const xVal = item[xKey];
     const yVal = item[yKey];
+
+    const formatVal = (val: unknown, key: string, u?: string) => {
+      if (tooltipFormatter && typeof val === "number") return tooltipFormatter(val, key);
+      if (typeof val === "number") return `${val.toLocaleString("ja-JP")}${u ? ` ${u}` : ""}`;
+      return String(val ?? "");
+    };
+
     return (
       <div className="bg-white border border-gray-200 rounded-lg shadow-sm px-3 py-2 text-xs">
         {nameKey && item[nameKey] && (
           <p className="font-semibold text-gray-700 mb-1">{String(item[nameKey])}</p>
         )}
         <p className="text-gray-600">
-          {xLabel || xKey}: {tooltipFormatter && typeof xVal === "number" ? tooltipFormatter(xVal, xKey) : (typeof xVal === "number" ? xVal.toLocaleString("ja-JP") : String(xVal ?? ""))}
+          {xLabel || xKey}: {formatVal(xVal, xKey, xUnit)}
         </p>
         <p className="text-gray-600">
-          {yLabel || yKey}: {tooltipFormatter && typeof yVal === "number" ? tooltipFormatter(yVal, yKey) : (typeof yVal === "number" ? yVal.toLocaleString("ja-JP") : String(yVal ?? ""))}
+          {yLabel || yKey}: {formatVal(yVal, yKey, yUnit)}
         </p>
       </div>
     );
@@ -68,6 +77,10 @@ interface ScatterChartProps {
   height?: number;
   /** ツールチップのフォーマッター */
   tooltipFormatter?: (value: number, name: string) => string;
+  /** X軸の単位（例: "施設", "円"） */
+  xUnit?: string;
+  /** Y軸の単位（例: "%", "件"） */
+  yUnit?: string;
 }
 
 export default function ScatterChart({
@@ -80,6 +93,8 @@ export default function ScatterChart({
   color = CHART_COLORS[0],
   height = 300,
   tooltipFormatter,
+  xUnit,
+  yUnit,
 }: ScatterChartProps) {
   if (!data || data.length === 0) {
     return (
@@ -89,7 +104,7 @@ export default function ScatterChart({
     );
   }
 
-  const CustomTooltip = createCustomTooltip(xKey, yKey, xLabel, yLabel, nameKey, tooltipFormatter);
+  const CustomTooltip = createCustomTooltip(xKey, yKey, xLabel, yLabel, nameKey, tooltipFormatter, xUnit, yUnit);
 
   return (
     <div style={{ overflow: "hidden" }}>

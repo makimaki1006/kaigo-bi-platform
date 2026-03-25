@@ -23,18 +23,20 @@ function CustomTooltip({
   payload,
   label,
   formatter,
+  unit,
 }: {
   active?: boolean;
   payload?: TooltipPayloadEntry[];
   label?: string;
   formatter?: (value: number) => string;
+  unit?: string;
 }) {
   if (!active || !payload || payload.length === 0) return null;
 
   const value = payload[0].value as number;
   const displayValue = formatter
     ? formatter(value)
-    : value.toLocaleString("ja-JP");
+    : `${value.toLocaleString("ja-JP")}${unit ? ` ${unit}` : ""}`;
 
   return (
     <div className="bg-gray-900 text-white px-3 py-2 rounded-lg shadow-xl text-xs">
@@ -61,6 +63,10 @@ interface BarChartProps {
   height?: number;
   /** グラデーション有効化 */
   gradient?: boolean;
+  /** ツールチップに表示する単位（例: "%", "万円", "人", "件", "施設"） */
+  unit?: string;
+  /** バークリック時のコールバック */
+  onBarClick?: (data: ChartDataPoint) => void;
 }
 
 /** Y軸の千区切りフォーマッター */
@@ -79,6 +85,8 @@ export default function BarChart({
   tooltipFormatter,
   height = 300,
   gradient = true,
+  unit,
+  onBarClick,
 }: BarChartProps) {
   if (!data || data.length === 0) {
     return (
@@ -132,7 +140,7 @@ export default function BarChart({
           />
           <Tooltip
             content={
-              <CustomTooltip formatter={tooltipFormatter} />
+              <CustomTooltip formatter={tooltipFormatter} unit={unit} />
             }
             cursor={{ fill: "rgba(99, 102, 241, 0.04)" }}
           />
@@ -143,6 +151,8 @@ export default function BarChart({
             maxBarSize={24}
             animationDuration={800}
             animationEasing="ease-out"
+            onClick={onBarClick ? (data) => onBarClick(data) : undefined}
+            cursor={onBarClick ? "pointer" : undefined}
           />
         </RechartsBarChart>
       </ResponsiveContainer>
@@ -184,7 +194,7 @@ export default function BarChart({
         />
         <Tooltip
           content={
-            <CustomTooltip formatter={tooltipFormatter} />
+            <CustomTooltip formatter={tooltipFormatter} unit={unit} />
           }
           cursor={{ fill: "rgba(99, 102, 241, 0.04)" }}
         />
@@ -195,6 +205,8 @@ export default function BarChart({
           maxBarSize={40}
           animationDuration={800}
           animationEasing="ease-out"
+          onClick={onBarClick ? (data) => onBarClick(data) : undefined}
+          cursor={onBarClick ? "pointer" : undefined}
         />
       </RechartsBarChart>
     </ResponsiveContainer>

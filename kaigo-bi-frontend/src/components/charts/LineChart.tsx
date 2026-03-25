@@ -25,11 +25,13 @@ function CustomTooltip({
   payload,
   label,
   formatter,
+  unit,
 }: {
   active?: boolean;
   payload?: TooltipPayloadEntry[];
   label?: string;
   formatter?: (value: number) => string;
+  unit?: string;
 }) {
   if (!active || !payload || payload.length === 0) return null;
 
@@ -40,7 +42,7 @@ function CustomTooltip({
         const value = entry.value as number;
         const displayValue = formatter
           ? formatter(value)
-          : value.toLocaleString("ja-JP");
+          : `${value.toLocaleString("ja-JP")}${unit ? ` ${unit}` : ""}`;
         return (
           <p key={index} className="font-semibold tabular-nums" style={{ color: entry.color }}>
             {entry.name}: {displayValue}
@@ -77,6 +79,8 @@ interface LineChartProps {
   referenceLineX?: string;
   /** 参照線のラベル */
   referenceLineLabel?: string;
+  /** ツールチップに表示する単位（例: "%", "万円", "施設"） */
+  unit?: string;
 }
 
 /** Y軸の千区切りフォーマッター */
@@ -94,6 +98,7 @@ export default function LineChart({
   height = 300,
   referenceLineX,
   referenceLineLabel,
+  unit,
 }: LineChartProps) {
   if (!data || data.length === 0) {
     return (
@@ -131,7 +136,7 @@ export default function LineChart({
           tickFormatter={yAxisFormatter}
         />
         <Tooltip
-          content={<CustomTooltip formatter={tooltipFormatter} />}
+          content={<CustomTooltip formatter={tooltipFormatter} unit={unit} />}
           cursor={{ stroke: "rgba(99, 102, 241, 0.3)" }}
         />
         <Legend

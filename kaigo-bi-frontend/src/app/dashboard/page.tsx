@@ -177,7 +177,15 @@ function DashboardContent() {
             yKey="facility_count"
             color={CHART_COLORS[0]}
             height={360}
+            unit="施設"
+            onBarClick={(d) => {
+              const pref = d.prefecture;
+              if (pref) {
+                setFilters({ prefectures: [String(pref)] });
+              }
+            }}
           />
+          <p className="text-xs text-gray-400 mt-1">棒をクリックすると都道府県フィルタが適用されます</p>
         </ChartCard>
 
         {/* サービス種別別施設数 */}
@@ -193,6 +201,7 @@ function DashboardContent() {
             color={CHART_COLORS[1]}
             horizontal
             height={360}
+            unit="施設"
           />
         </ChartCard>
 
@@ -208,6 +217,7 @@ function DashboardContent() {
             valueKey="count"
             centerLabel="法人数"
             height={360}
+            unit="法人"
           />
         </ChartCard>
 
