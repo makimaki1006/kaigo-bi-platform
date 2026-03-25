@@ -106,6 +106,7 @@ export default function LineChart({
   }
 
   return (
+    <div style={{ overflow: "hidden" }}>
     <ResponsiveContainer width="100%" height={height}>
       <RechartsLineChart
         data={data}
@@ -166,5 +167,6 @@ export default function LineChart({
         ))}
       </RechartsLineChart>
     </ResponsiveContainer>
+    </div>
   );
 }

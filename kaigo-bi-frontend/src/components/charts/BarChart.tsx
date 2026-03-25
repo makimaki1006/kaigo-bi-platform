@@ -96,6 +96,7 @@ export default function BarChart({
   // 横棒グラフ
   if (horizontal) {
     return (
+      <div style={{ overflow: "hidden" }}>
       <ResponsiveContainer
         width="100%"
         height={Math.max(height, data.length * 28)}
@@ -124,8 +125,9 @@ export default function BarChart({
           <YAxis
             type="category"
             dataKey={xKey}
-            tick={{ fontSize: 11, fill: "#374151" }}
+            tick={{ fontSize: 10, fill: "#374151" }}
             width={90}
+            tickFormatter={(v: string) => v.length > 10 ? v.slice(0, 10) + "..." : v}
           />
           <Tooltip
             content={
@@ -143,15 +145,17 @@ export default function BarChart({
           />
         </RechartsBarChart>
       </ResponsiveContainer>
+      </div>
     );
   }
 
   // 縦棒グラフ
   return (
+    <div style={{ overflow: "hidden" }}>
     <ResponsiveContainer width="100%" height={height}>
       <RechartsBarChart
         data={data}
-        margin={{ top: 5, right: 20, left: 10, bottom: 5 }}
+        margin={{ top: 5, right: 20, left: 10, bottom: 20 }}
       >
         <defs>
           <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
@@ -166,11 +170,12 @@ export default function BarChart({
         />
         <XAxis
           dataKey={xKey}
-          tick={{ fontSize: 11, fill: "#374151" }}
+          tick={{ fontSize: 10, fill: "#374151" }}
           interval={0}
           angle={-45}
           textAnchor="end"
-          height={60}
+          height={80}
+          tickFormatter={(v: string) => v.length > 8 ? v.slice(0, 8) + "..." : v}
         />
         <YAxis
           tick={{ fontSize: 11, fill: "#6b7280" }}
@@ -192,5 +197,6 @@ export default function BarChart({
         />
       </RechartsBarChart>
     </ResponsiveContainer>
+    </div>
   );
 }

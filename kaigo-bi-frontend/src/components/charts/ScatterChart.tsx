@@ -77,6 +77,7 @@ export default function ScatterChart({
   };
 
   return (
+    <div style={{ overflow: "hidden" }}>
     <ResponsiveContainer width="100%" height={height}>
       <RechartsScatterChart margin={{ top: 10, right: 20, bottom: 30, left: 10 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
@@ -99,5 +100,6 @@ export default function ScatterChart({
         <Scatter data={data} fill={color} fillOpacity={0.6} />
       </RechartsScatterChart>
     </ResponsiveContainer>
+    </div>
   );
 }

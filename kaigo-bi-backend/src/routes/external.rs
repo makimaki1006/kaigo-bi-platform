@@ -394,8 +394,14 @@ async fn service_portfolio(
     loop {
         match name_cursor.next().await {
             Ok(Some(row)) => {
-                let code: String = row.get(0).unwrap_or_default();
-                let name: String = row.get(1).unwrap_or_default();
+                let code = match row.get_value(0) {
+                    Ok(libsql::Value::Text(s)) => s,
+                    _ => String::new(),
+                };
+                let name = match row.get_value(1) {
+                    Ok(libsql::Value::Text(s)) => s,
+                    _ => String::new(),
+                };
                 if !code.is_empty() && !name.is_empty() {
                     code_to_name.entry(code).or_insert(name);
                 }
@@ -419,8 +425,14 @@ async fn service_portfolio(
     loop {
         match corp_cursor.next().await {
             Ok(Some(row)) => {
-                let corp: String = row.get(0).unwrap_or_default();
-                let code: String = row.get(1).unwrap_or_default();
+                let corp = match row.get_value(0) {
+                    Ok(libsql::Value::Text(s)) => s,
+                    _ => String::new(),
+                };
+                let code = match row.get_value(1) {
+                    Ok(libsql::Value::Text(s)) => s,
+                    _ => String::new(),
+                };
                 if !corp.is_empty() && !code.is_empty() {
                     corp_services.entry(corp).or_default().insert(code);
                 }
@@ -844,10 +856,16 @@ async fn population(
 #[derive(Serialize)]
 struct CareDemandEntry {
     prefecture: String,
-    fiscal_year: Option<i64>,
-    facility_count: Option<i64>,
-    user_count: Option<i64>,
-    benefit_amount: Option<f64>,
+    fiscal_year: Option<String>,
+    day_service_offices: Option<f64>,
+    day_service_users: Option<f64>,
+    home_care_offices: Option<f64>,
+    home_care_users: Option<f64>,
+    nursing_home_count: Option<f64>,
+    health_facility_count: Option<f64>,
+    insurance_benefit_cost: Option<f64>,
+    pop_65_over: Option<f64>,
+    pop_65_over_rate: Option<f64>,
 }
 
 /// GET /api/external/care-demand?prefecture= - 介護施設数・利用者数・給付費
@@ -858,27 +876,22 @@ async fn care_demand(
     let external_db = get_external_db(&state)?;
     let conn = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
 
-    let col_names = get_table_columns(&conn, "v2_external_care_demand").await?;
-
-    let pref_c = find_column(&col_names, &["prefecture", "都道府県"]).unwrap_or_else(|| "prefecture".to_string());
-    let year_c = find_column(&col_names, &["fiscal_year", "年度", "year"]).unwrap_or_else(|| "fiscal_year".to_string());
-    let fac_c = find_column(&col_names, &["facility_count", "施設数", "facilities"]).unwrap_or_else(|| "facility_count".to_string());
-    let user_c = find_column(&col_names, &["user_count", "利用者数", "users"]).unwrap_or_else(|| "user_count".to_string());
-    let benefit_c = find_column(&col_names, &["benefit_amount", "給付費", "benefit"]).unwrap_or_else(|| "benefit_amount".to_string());
-
-    let conn2 = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
     let rows = if let Some(pref) = params.get("prefecture") {
-        let sql = format!(
-            "SELECT {}, {}, {}, {}, {} FROM v2_external_care_demand WHERE {} = ?1 ORDER BY {} DESC",
-            pref_c, year_c, fac_c, user_c, benefit_c, pref_c, year_c
-        );
-        conn2.query(&sql, [pref.clone()]).await
+        conn.query(
+            "SELECT prefecture, fiscal_year, day_service_offices, day_service_users, \
+             home_care_offices, home_care_users, nursing_home_count, health_facility_count, \
+             insurance_benefit_cost, pop_65_over, pop_65_over_rate \
+             FROM v2_external_care_demand WHERE prefecture = ?1 ORDER BY fiscal_year DESC",
+            [pref.clone()],
+        ).await
     } else {
-        let sql = format!(
-            "SELECT {}, {}, {}, {}, {} FROM v2_external_care_demand ORDER BY {}, {} DESC",
-            pref_c, year_c, fac_c, user_c, benefit_c, pref_c, year_c
-        );
-        conn2.query(&sql, ()).await
+        conn.query(
+            "SELECT prefecture, fiscal_year, day_service_offices, day_service_users, \
+             home_care_offices, home_care_users, nursing_home_count, health_facility_count, \
+             insurance_benefit_cost, pop_65_over, pop_65_over_rate \
+             FROM v2_external_care_demand ORDER BY prefecture, fiscal_year DESC",
+            (),
+        ).await
     }.map_err(|e| AppError::Internal(format!("介護需要クエリエラー: {}", e)))?;
 
     let mut results = Vec::new();
@@ -888,10 +901,16 @@ async fn care_demand(
             Ok(Some(row)) => {
                 results.push(CareDemandEntry {
                     prefecture: row.get::<String>(0).unwrap_or_default(),
-                    fiscal_year: row.get_value(1).ok().and_then(|v| value_to_i64(&v)),
-                    facility_count: row.get_value(2).ok().and_then(|v| value_to_i64(&v)),
-                    user_count: row.get_value(3).ok().and_then(|v| value_to_i64(&v)),
-                    benefit_amount: row.get_value(4).ok().and_then(|v| value_to_f64(&v)),
+                    fiscal_year: row.get::<String>(1).ok(),
+                    day_service_offices: row.get_value(2).ok().and_then(|v| value_to_f64(&v)),
+                    day_service_users: row.get_value(3).ok().and_then(|v| value_to_f64(&v)),
+                    home_care_offices: row.get_value(4).ok().and_then(|v| value_to_f64(&v)),
+                    home_care_users: row.get_value(5).ok().and_then(|v| value_to_f64(&v)),
+                    nursing_home_count: row.get_value(6).ok().and_then(|v| value_to_f64(&v)),
+                    health_facility_count: row.get_value(7).ok().and_then(|v| value_to_f64(&v)),
+                    insurance_benefit_cost: row.get_value(8).ok().and_then(|v| value_to_f64(&v)),
+                    pop_65_over: row.get_value(9).ok().and_then(|v| value_to_f64(&v)),
+                    pop_65_over_rate: row.get_value(10).ok().and_then(|v| value_to_f64(&v)),
                 });
             }
             Ok(None) => break,
@@ -909,10 +928,12 @@ async fn care_demand(
 #[derive(Serialize)]
 struct LaborTrendsEntry {
     prefecture: String,
-    fiscal_year: Option<i64>,
+    fiscal_year: Option<String>,
+    separation_rate: Option<f64>,
     turnover_rate: Option<f64>,
-    job_change_rate: Option<f64>,
+    job_changer_rate: Option<f64>,
     unemployment_rate: Option<f64>,
+    employment_rate: Option<f64>,
 }
 
 /// GET /api/external/labor-trends?prefecture= - 離職率・転職率・失業率
@@ -923,27 +944,22 @@ async fn labor_trends(
     let external_db = get_external_db(&state)?;
     let conn = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
 
-    let col_names = get_table_columns(&conn, "v2_external_labor_stats").await?;
-
-    let pref_c = find_column(&col_names, &["prefecture", "都道府県"]).unwrap_or_else(|| "prefecture".to_string());
-    let year_c = find_column(&col_names, &["fiscal_year", "年度", "year"]).unwrap_or_else(|| "fiscal_year".to_string());
-    let turn_c = find_column(&col_names, &["turnover_rate", "離職率"]).unwrap_or_else(|| "turnover_rate".to_string());
-    let job_c = find_column(&col_names, &["job_change_rate", "転職率"]).unwrap_or_else(|| "job_change_rate".to_string());
-    let unemp_c = find_column(&col_names, &["unemployment_rate", "失業率"]).unwrap_or_else(|| "unemployment_rate".to_string());
-
-    let conn2 = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
+    // 実際のカラム: separation_rate（離職率）, turnover_rate（離転職率）,
+    // job_changer_rate（転職率）, unemployment_rate, employment_rate
     let rows = if let Some(pref) = params.get("prefecture") {
-        let sql = format!(
-            "SELECT {}, {}, {}, {}, {} FROM v2_external_labor_stats WHERE {} = ?1 ORDER BY {} DESC",
-            pref_c, year_c, turn_c, job_c, unemp_c, pref_c, year_c
-        );
-        conn2.query(&sql, [pref.clone()]).await
+        conn.query(
+            "SELECT prefecture, fiscal_year, separation_rate, turnover_rate, \
+             job_changer_rate, unemployment_rate, employment_rate \
+             FROM v2_external_labor_stats WHERE prefecture = ?1 ORDER BY fiscal_year DESC",
+            [pref.clone()],
+        ).await
     } else {
-        let sql = format!(
-            "SELECT {}, {}, {}, {}, {} FROM v2_external_labor_stats ORDER BY {}, {} DESC",
-            pref_c, year_c, turn_c, job_c, unemp_c, pref_c, year_c
-        );
-        conn2.query(&sql, ()).await
+        conn.query(
+            "SELECT prefecture, fiscal_year, separation_rate, turnover_rate, \
+             job_changer_rate, unemployment_rate, employment_rate \
+             FROM v2_external_labor_stats ORDER BY prefecture, fiscal_year DESC",
+            (),
+        ).await
     }.map_err(|e| AppError::Internal(format!("労働統計クエリエラー: {}", e)))?;
 
     let mut results = Vec::new();
@@ -953,10 +969,12 @@ async fn labor_trends(
             Ok(Some(row)) => {
                 results.push(LaborTrendsEntry {
                     prefecture: row.get::<String>(0).unwrap_or_default(),
-                    fiscal_year: row.get_value(1).ok().and_then(|v| value_to_i64(&v)),
-                    turnover_rate: row.get_value(2).ok().and_then(|v| value_to_f64(&v)),
-                    job_change_rate: row.get_value(3).ok().and_then(|v| value_to_f64(&v)),
-                    unemployment_rate: row.get_value(4).ok().and_then(|v| value_to_f64(&v)),
+                    fiscal_year: row.get::<String>(1).ok(),
+                    separation_rate: row.get_value(2).ok().and_then(|v| value_to_f64(&v)),
+                    turnover_rate: row.get_value(3).ok().and_then(|v| value_to_f64(&v)),
+                    job_changer_rate: row.get_value(4).ok().and_then(|v| value_to_f64(&v)),
+                    unemployment_rate: row.get_value(5).ok().and_then(|v| value_to_f64(&v)),
+                    employment_rate: row.get_value(6).ok().and_then(|v| value_to_f64(&v)),
                 });
             }
             Ok(None) => break,
@@ -974,8 +992,9 @@ async fn labor_trends(
 #[derive(Serialize)]
 struct JobOpeningsEntry {
     prefecture: String,
-    fiscal_year: Option<i64>,
-    job_openings_ratio: Option<f64>,
+    fiscal_year: Option<String>,
+    ratio_total: Option<f64>,
+    ratio_excl_part: Option<f64>,
 }
 
 /// GET /api/external/job-openings?prefecture= - 有効求人倍率推移
@@ -986,25 +1005,19 @@ async fn job_openings(
     let external_db = get_external_db(&state)?;
     let conn = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
 
-    let col_names = get_table_columns(&conn, "v2_external_job_openings_ratio").await?;
-
-    let pref_c = find_column(&col_names, &["prefecture", "都道府県"]).unwrap_or_else(|| "prefecture".to_string());
-    let year_c = find_column(&col_names, &["fiscal_year", "年度", "year"]).unwrap_or_else(|| "fiscal_year".to_string());
-    let ratio_c = find_column(&col_names, &["job_openings_ratio", "有効求人倍率", "ratio"]).unwrap_or_else(|| "job_openings_ratio".to_string());
-
-    let conn2 = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
+    // 実際のカラム: ratio_total（全体）, ratio_excl_part（パート除く）
     let rows = if let Some(pref) = params.get("prefecture") {
-        let sql = format!(
-            "SELECT {}, {}, {} FROM v2_external_job_openings_ratio WHERE {} = ?1 ORDER BY {} DESC",
-            pref_c, year_c, ratio_c, pref_c, year_c
-        );
-        conn2.query(&sql, [pref.clone()]).await
+        conn.query(
+            "SELECT prefecture, fiscal_year, ratio_total, ratio_excl_part \
+             FROM v2_external_job_openings_ratio WHERE prefecture = ?1 ORDER BY fiscal_year DESC",
+            [pref.clone()],
+        ).await
     } else {
-        let sql = format!(
-            "SELECT {}, {}, {} FROM v2_external_job_openings_ratio ORDER BY {}, {} DESC",
-            pref_c, year_c, ratio_c, pref_c, year_c
-        );
-        conn2.query(&sql, ()).await
+        conn.query(
+            "SELECT prefecture, fiscal_year, ratio_total, ratio_excl_part \
+             FROM v2_external_job_openings_ratio ORDER BY prefecture, fiscal_year DESC",
+            (),
+        ).await
     }.map_err(|e| AppError::Internal(format!("求人倍率クエリエラー: {}", e)))?;
 
     let mut results = Vec::new();
@@ -1014,8 +1027,9 @@ async fn job_openings(
             Ok(Some(row)) => {
                 results.push(JobOpeningsEntry {
                     prefecture: row.get::<String>(0).unwrap_or_default(),
-                    fiscal_year: row.get_value(1).ok().and_then(|v| value_to_i64(&v)),
-                    job_openings_ratio: row.get_value(2).ok().and_then(|v| value_to_f64(&v)),
+                    fiscal_year: row.get::<String>(1).ok(),
+                    ratio_total: row.get_value(2).ok().and_then(|v| value_to_f64(&v)),
+                    ratio_excl_part: row.get_value(3).ok().and_then(|v| value_to_f64(&v)),
                 });
             }
             Ok(None) => break,
@@ -1034,7 +1048,7 @@ async fn job_openings(
 struct WageHistoryEntry {
     prefecture: String,
     fiscal_year: Option<i64>,
-    min_wage: Option<i64>,
+    hourly_min_wage: Option<i64>,
 }
 
 /// GET /api/external/wage-history?prefecture= - 最低賃金推移
@@ -1045,25 +1059,19 @@ async fn wage_history(
     let external_db = get_external_db(&state)?;
     let conn = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
 
-    let col_names = get_table_columns(&conn, "v2_external_minimum_wage_history").await?;
-
-    let pref_c = find_column(&col_names, &["prefecture", "都道府県"]).unwrap_or_else(|| "prefecture".to_string());
-    let year_c = find_column(&col_names, &["fiscal_year", "年度", "year"]).unwrap_or_else(|| "fiscal_year".to_string());
-    let wage_c = find_column(&col_names, &["min_wage", "最低賃金", "minimum_wage"]).unwrap_or_else(|| "min_wage".to_string());
-
-    let conn2 = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
+    // 実際のカラム: fiscal_year (INTEGER), prefecture (TEXT), hourly_min_wage (INTEGER)
     let rows = if let Some(pref) = params.get("prefecture") {
-        let sql = format!(
-            "SELECT {}, {}, {} FROM v2_external_minimum_wage_history WHERE {} = ?1 ORDER BY {} DESC",
-            pref_c, year_c, wage_c, pref_c, year_c
-        );
-        conn2.query(&sql, [pref.clone()]).await
+        conn.query(
+            "SELECT prefecture, fiscal_year, hourly_min_wage \
+             FROM v2_external_minimum_wage_history WHERE prefecture = ?1 ORDER BY fiscal_year DESC",
+            [pref.clone()],
+        ).await
     } else {
-        let sql = format!(
-            "SELECT {}, {}, {} FROM v2_external_minimum_wage_history ORDER BY {}, {} DESC",
-            pref_c, year_c, wage_c, pref_c, year_c
-        );
-        conn2.query(&sql, ()).await
+        conn.query(
+            "SELECT prefecture, fiscal_year, hourly_min_wage \
+             FROM v2_external_minimum_wage_history ORDER BY prefecture, fiscal_year DESC",
+            (),
+        ).await
     }.map_err(|e| AppError::Internal(format!("最低賃金クエリエラー: {}", e)))?;
 
     let mut results = Vec::new();
@@ -1074,7 +1082,7 @@ async fn wage_history(
                 results.push(WageHistoryEntry {
                     prefecture: row.get::<String>(0).unwrap_or_default(),
                     fiscal_year: row.get_value(1).ok().and_then(|v| value_to_i64(&v)),
-                    min_wage: row.get_value(2).ok().and_then(|v| value_to_i64(&v)),
+                    hourly_min_wage: row.get_value(2).ok().and_then(|v| value_to_i64(&v)),
                 });
             }
             Ok(None) => break,
@@ -1092,9 +1100,13 @@ async fn wage_history(
 #[derive(Serialize)]
 struct BusinessDynamicsEntry {
     prefecture: String,
-    fiscal_year: Option<i64>,
+    fiscal_year: Option<String>,
+    total_establishments: Option<i64>,
+    new_establishments: Option<i64>,
+    closed_establishments: Option<i64>,
+    net_change: Option<i64>,
     opening_rate: Option<f64>,
-    closing_rate: Option<f64>,
+    closure_rate: Option<f64>,
 }
 
 /// GET /api/external/business-dynamics?prefecture= - 開業率・廃業率
@@ -1105,26 +1117,22 @@ async fn business_dynamics(
     let external_db = get_external_db(&state)?;
     let conn = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
 
-    let col_names = get_table_columns(&conn, "v2_external_business_dynamics").await?;
-
-    let pref_c = find_column(&col_names, &["prefecture", "都道府県"]).unwrap_or_else(|| "prefecture".to_string());
-    let year_c = find_column(&col_names, &["fiscal_year", "年度", "year"]).unwrap_or_else(|| "fiscal_year".to_string());
-    let open_c = find_column(&col_names, &["opening_rate", "開業率"]).unwrap_or_else(|| "opening_rate".to_string());
-    let close_c = find_column(&col_names, &["closing_rate", "廃業率"]).unwrap_or_else(|| "closing_rate".to_string());
-
-    let conn2 = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
+    // 実際のカラム: total_establishments, new_establishments, closed_establishments,
+    // net_change, opening_rate, closure_rate（closing_rateではない）
     let rows = if let Some(pref) = params.get("prefecture") {
-        let sql = format!(
-            "SELECT {}, {}, {}, {} FROM v2_external_business_dynamics WHERE {} = ?1 ORDER BY {} DESC",
-            pref_c, year_c, open_c, close_c, pref_c, year_c
-        );
-        conn2.query(&sql, [pref.clone()]).await
+        conn.query(
+            "SELECT prefecture, fiscal_year, total_establishments, new_establishments, \
+             closed_establishments, net_change, opening_rate, closure_rate \
+             FROM v2_external_business_dynamics WHERE prefecture = ?1 ORDER BY fiscal_year DESC",
+            [pref.clone()],
+        ).await
     } else {
-        let sql = format!(
-            "SELECT {}, {}, {}, {} FROM v2_external_business_dynamics ORDER BY {}, {} DESC",
-            pref_c, year_c, open_c, close_c, pref_c, year_c
-        );
-        conn2.query(&sql, ()).await
+        conn.query(
+            "SELECT prefecture, fiscal_year, total_establishments, new_establishments, \
+             closed_establishments, net_change, opening_rate, closure_rate \
+             FROM v2_external_business_dynamics ORDER BY prefecture, fiscal_year DESC",
+            (),
+        ).await
     }.map_err(|e| AppError::Internal(format!("開廃業率クエリエラー: {}", e)))?;
 
     let mut results = Vec::new();
@@ -1134,9 +1142,13 @@ async fn business_dynamics(
             Ok(Some(row)) => {
                 results.push(BusinessDynamicsEntry {
                     prefecture: row.get::<String>(0).unwrap_or_default(),
-                    fiscal_year: row.get_value(1).ok().and_then(|v| value_to_i64(&v)),
-                    opening_rate: row.get_value(2).ok().and_then(|v| value_to_f64(&v)),
-                    closing_rate: row.get_value(3).ok().and_then(|v| value_to_f64(&v)),
+                    fiscal_year: row.get::<String>(1).ok(),
+                    total_establishments: row.get_value(2).ok().and_then(|v| value_to_i64(&v)),
+                    new_establishments: row.get_value(3).ok().and_then(|v| value_to_i64(&v)),
+                    closed_establishments: row.get_value(4).ok().and_then(|v| value_to_i64(&v)),
+                    net_change: row.get_value(5).ok().and_then(|v| value_to_i64(&v)),
+                    opening_rate: row.get_value(6).ok().and_then(|v| value_to_f64(&v)),
+                    closure_rate: row.get_value(7).ok().and_then(|v| value_to_f64(&v)),
                 });
             }
             Ok(None) => break,
@@ -1154,14 +1166,17 @@ async fn business_dynamics(
 #[derive(Serialize)]
 struct SalaryBenchmarkEntry {
     prefecture: String,
-    occupation: String,
-    employment_type: String,
-    avg_salary: Option<f64>,
-    median_salary: Option<f64>,
+    industry_major_code: String,
+    emp_group: String,
     count: Option<i64>,
+    mean_min: Option<f64>,
+    mean_max: Option<f64>,
+    median_min: Option<f64>,
+    min_val: Option<i64>,
+    max_val: Option<i64>,
 }
 
-/// GET /api/external/salary-benchmark?prefecture=&occupation= - 求人給与統計
+/// GET /api/external/salary-benchmark?prefecture=&industry= - 求人給与統計
 async fn salary_benchmark(
     State(state): State<SharedState>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
@@ -1169,50 +1184,46 @@ async fn salary_benchmark(
     let external_db = get_external_db(&state)?;
     let conn = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
 
-    let col_names = get_table_columns(&conn, "ts_turso_salary").await?;
-
-    let pref_c = find_column(&col_names, &["prefecture", "都道府県"]).unwrap_or_else(|| "prefecture".to_string());
-    let occ_c = find_column(&col_names, &["occupation", "職種", "job_type"]).unwrap_or_else(|| "occupation".to_string());
-    let emp_c = find_column(&col_names, &["employment_type", "雇用形態", "emp_type"]).unwrap_or_else(|| "employment_type".to_string());
-    let avg_c = find_column(&col_names, &["avg_salary", "平均給与", "average_salary"]).unwrap_or_else(|| "avg_salary".to_string());
-    let med_c = find_column(&col_names, &["median_salary", "中央値給与", "median"]).unwrap_or_else(|| "median_salary".to_string());
-    let cnt_c = find_column(&col_names, &["count", "件数", "sample_count", "n"]).unwrap_or_else(|| "count".to_string());
-
-    let select_cols = format!("{}, {}, {}, {}, {}, {}", pref_c, occ_c, emp_c, avg_c, med_c, cnt_c);
-    let order_cols = format!("{}, {}, {}", pref_c, occ_c, emp_c);
-
-    let conn2 = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
+    // 実際のカラム: snapshot_id, prefecture, industry_major_code, emp_group,
+    // count, mean_min, mean_max, median_min, min_val, max_val
     let pref_param = params.get("prefecture");
-    let occ_param = params.get("occupation");
+    let industry_param = params.get("industry");
 
-    let rows = match (pref_param, occ_param) {
-        (Some(pref), Some(occ)) => {
-            let sql = format!(
-                "SELECT {} FROM ts_turso_salary WHERE {} = ?1 AND {} LIKE ?2 ORDER BY {}",
-                select_cols, pref_c, occ_c, order_cols
-            );
-            conn2.query(&sql, [pref.clone(), format!("%{}%", occ)]).await
+    let rows = match (pref_param, industry_param) {
+        (Some(pref), Some(ind)) => {
+            conn.query(
+                "SELECT prefecture, industry_major_code, emp_group, count, \
+                 mean_min, mean_max, median_min, min_val, max_val \
+                 FROM ts_turso_salary WHERE prefecture = ?1 AND industry_major_code LIKE ?2 \
+                 ORDER BY prefecture, industry_major_code, emp_group",
+                [pref.clone(), format!("%{}%", ind)],
+            ).await
         }
         (Some(pref), None) => {
-            let sql = format!(
-                "SELECT {} FROM ts_turso_salary WHERE {} = ?1 ORDER BY {}",
-                select_cols, pref_c, order_cols
-            );
-            conn2.query(&sql, [pref.clone()]).await
+            conn.query(
+                "SELECT prefecture, industry_major_code, emp_group, count, \
+                 mean_min, mean_max, median_min, min_val, max_val \
+                 FROM ts_turso_salary WHERE prefecture = ?1 \
+                 ORDER BY prefecture, industry_major_code, emp_group",
+                [pref.clone()],
+            ).await
         }
-        (None, Some(occ)) => {
-            let sql = format!(
-                "SELECT {} FROM ts_turso_salary WHERE {} LIKE ?1 ORDER BY {}",
-                select_cols, occ_c, order_cols
-            );
-            conn2.query(&sql, [format!("%{}%", occ)]).await
+        (None, Some(ind)) => {
+            conn.query(
+                "SELECT prefecture, industry_major_code, emp_group, count, \
+                 mean_min, mean_max, median_min, min_val, max_val \
+                 FROM ts_turso_salary WHERE industry_major_code LIKE ?1 \
+                 ORDER BY prefecture, industry_major_code, emp_group",
+                [format!("%{}%", ind)],
+            ).await
         }
         (None, None) => {
-            let sql = format!(
-                "SELECT {} FROM ts_turso_salary ORDER BY {}",
-                select_cols, order_cols
-            );
-            conn2.query(&sql, ()).await
+            conn.query(
+                "SELECT prefecture, industry_major_code, emp_group, count, \
+                 mean_min, mean_max, median_min, min_val, max_val \
+                 FROM ts_turso_salary ORDER BY prefecture, industry_major_code, emp_group",
+                (),
+            ).await
         }
     }.map_err(|e| AppError::Internal(format!("給与統計クエリエラー: {}", e)))?;
 
@@ -1223,11 +1234,14 @@ async fn salary_benchmark(
             Ok(Some(row)) => {
                 results.push(SalaryBenchmarkEntry {
                     prefecture: row.get::<String>(0).unwrap_or_default(),
-                    occupation: row.get::<String>(1).unwrap_or_default(),
-                    employment_type: row.get::<String>(2).unwrap_or_default(),
-                    avg_salary: row.get_value(3).ok().and_then(|v| value_to_f64(&v)),
-                    median_salary: row.get_value(4).ok().and_then(|v| value_to_f64(&v)),
-                    count: row.get_value(5).ok().and_then(|v| value_to_i64(&v)),
+                    industry_major_code: row.get::<String>(1).unwrap_or_default(),
+                    emp_group: row.get::<String>(2).unwrap_or_default(),
+                    count: row.get_value(3).ok().and_then(|v| value_to_i64(&v)),
+                    mean_min: row.get_value(4).ok().and_then(|v| value_to_f64(&v)),
+                    mean_max: row.get_value(5).ok().and_then(|v| value_to_f64(&v)),
+                    median_min: row.get_value(6).ok().and_then(|v| value_to_f64(&v)),
+                    min_val: row.get_value(7).ok().and_then(|v| value_to_i64(&v)),
+                    max_val: row.get_value(8).ok().and_then(|v| value_to_i64(&v)),
                 });
             }
             Ok(None) => break,
@@ -1245,13 +1259,17 @@ async fn salary_benchmark(
 #[derive(Serialize)]
 struct VacancyStatsEntry {
     prefecture: String,
-    occupation: String,
-    fill_rate: Option<f64>,
+    industry_major_code: String,
+    emp_group: String,
+    total_count: Option<i64>,
+    vacancy_count: Option<i64>,
+    growth_count: Option<i64>,
+    new_facility_count: Option<i64>,
     vacancy_rate: Option<f64>,
-    count: Option<i64>,
+    growth_rate: Option<f64>,
 }
 
-/// GET /api/external/vacancy-stats?prefecture=&occupation= - 求人充足率・欠員率
+/// GET /api/external/vacancy-stats?prefecture=&industry= - 求人欠員率・成長率
 async fn vacancy_stats(
     State(state): State<SharedState>,
     axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
@@ -1259,49 +1277,46 @@ async fn vacancy_stats(
     let external_db = get_external_db(&state)?;
     let conn = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
 
-    let col_names = get_table_columns(&conn, "ts_turso_vacancy").await?;
-
-    let pref_c = find_column(&col_names, &["prefecture", "都道府県"]).unwrap_or_else(|| "prefecture".to_string());
-    let occ_c = find_column(&col_names, &["occupation", "職種", "job_type"]).unwrap_or_else(|| "occupation".to_string());
-    let fill_c = find_column(&col_names, &["fill_rate", "充足率"]).unwrap_or_else(|| "fill_rate".to_string());
-    let vac_c = find_column(&col_names, &["vacancy_rate", "欠員率"]).unwrap_or_else(|| "vacancy_rate".to_string());
-    let cnt_c = find_column(&col_names, &["count", "件数", "sample_count", "n"]).unwrap_or_else(|| "count".to_string());
-
-    let select_cols = format!("{}, {}, {}, {}, {}", pref_c, occ_c, fill_c, vac_c, cnt_c);
-    let order_cols = format!("{}, {}", pref_c, occ_c);
-
-    let conn2 = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
+    // 実際のカラム: snapshot_id, prefecture, industry_major_code, emp_group,
+    // total_count, vacancy_count, growth_count, new_facility_count, vacancy_rate, growth_rate
     let pref_param = params.get("prefecture");
-    let occ_param = params.get("occupation");
+    let industry_param = params.get("industry");
 
-    let rows = match (pref_param, occ_param) {
-        (Some(pref), Some(occ)) => {
-            let sql = format!(
-                "SELECT {} FROM ts_turso_vacancy WHERE {} = ?1 AND {} LIKE ?2 ORDER BY {}",
-                select_cols, pref_c, occ_c, order_cols
-            );
-            conn2.query(&sql, [pref.clone(), format!("%{}%", occ)]).await
+    let rows = match (pref_param, industry_param) {
+        (Some(pref), Some(ind)) => {
+            conn.query(
+                "SELECT prefecture, industry_major_code, emp_group, total_count, \
+                 vacancy_count, growth_count, new_facility_count, vacancy_rate, growth_rate \
+                 FROM ts_turso_vacancy WHERE prefecture = ?1 AND industry_major_code LIKE ?2 \
+                 ORDER BY prefecture, industry_major_code, emp_group",
+                [pref.clone(), format!("%{}%", ind)],
+            ).await
         }
         (Some(pref), None) => {
-            let sql = format!(
-                "SELECT {} FROM ts_turso_vacancy WHERE {} = ?1 ORDER BY {}",
-                select_cols, pref_c, order_cols
-            );
-            conn2.query(&sql, [pref.clone()]).await
+            conn.query(
+                "SELECT prefecture, industry_major_code, emp_group, total_count, \
+                 vacancy_count, growth_count, new_facility_count, vacancy_rate, growth_rate \
+                 FROM ts_turso_vacancy WHERE prefecture = ?1 \
+                 ORDER BY prefecture, industry_major_code, emp_group",
+                [pref.clone()],
+            ).await
         }
-        (None, Some(occ)) => {
-            let sql = format!(
-                "SELECT {} FROM ts_turso_vacancy WHERE {} LIKE ?1 ORDER BY {}",
-                select_cols, occ_c, order_cols
-            );
-            conn2.query(&sql, [format!("%{}%", occ)]).await
+        (None, Some(ind)) => {
+            conn.query(
+                "SELECT prefecture, industry_major_code, emp_group, total_count, \
+                 vacancy_count, growth_count, new_facility_count, vacancy_rate, growth_rate \
+                 FROM ts_turso_vacancy WHERE industry_major_code LIKE ?1 \
+                 ORDER BY prefecture, industry_major_code, emp_group",
+                [format!("%{}%", ind)],
+            ).await
         }
         (None, None) => {
-            let sql = format!(
-                "SELECT {} FROM ts_turso_vacancy ORDER BY {}",
-                select_cols, order_cols
-            );
-            conn2.query(&sql, ()).await
+            conn.query(
+                "SELECT prefecture, industry_major_code, emp_group, total_count, \
+                 vacancy_count, growth_count, new_facility_count, vacancy_rate, growth_rate \
+                 FROM ts_turso_vacancy ORDER BY prefecture, industry_major_code, emp_group",
+                (),
+            ).await
         }
     }.map_err(|e| AppError::Internal(format!("充足率クエリエラー: {}", e)))?;
 
@@ -1312,10 +1327,14 @@ async fn vacancy_stats(
             Ok(Some(row)) => {
                 results.push(VacancyStatsEntry {
                     prefecture: row.get::<String>(0).unwrap_or_default(),
-                    occupation: row.get::<String>(1).unwrap_or_default(),
-                    fill_rate: row.get_value(2).ok().and_then(|v| value_to_f64(&v)),
-                    vacancy_rate: row.get_value(3).ok().and_then(|v| value_to_f64(&v)),
-                    count: row.get_value(4).ok().and_then(|v| value_to_i64(&v)),
+                    industry_major_code: row.get::<String>(1).unwrap_or_default(),
+                    emp_group: row.get::<String>(2).unwrap_or_default(),
+                    total_count: row.get_value(3).ok().and_then(|v| value_to_i64(&v)),
+                    vacancy_count: row.get_value(4).ok().and_then(|v| value_to_i64(&v)),
+                    growth_count: row.get_value(5).ok().and_then(|v| value_to_i64(&v)),
+                    new_facility_count: row.get_value(6).ok().and_then(|v| value_to_i64(&v)),
+                    vacancy_rate: row.get_value(7).ok().and_then(|v| value_to_f64(&v)),
+                    growth_rate: row.get_value(8).ok().and_then(|v| value_to_f64(&v)),
                 });
             }
             Ok(None) => break,

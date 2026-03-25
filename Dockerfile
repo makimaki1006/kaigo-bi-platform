@@ -81,7 +81,8 @@ ENV NEXT_TELEMETRY_DISABLED=1
 EXPOSE 10000
 
 # ヘルスチェック: nginx 経由で /api/health を確認
-HEALTHCHECK --interval=30s --timeout=5s --start-period=120s --retries=3 \
+# 方式D移行により起動は0.3秒程度のため start-period を30秒に短縮
+HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:10000/api/health || exit 1
 
 # tini をエントリポイントに使用（ゾンビプロセス防止）

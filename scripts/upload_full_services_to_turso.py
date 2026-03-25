@@ -6,14 +6,17 @@
 """
 
 import csv
+import os
 import re
 import sys
 import time
 import glob
 import requests
 
-TURSO_URL = "https://cw-makimaki1006.aws-ap-northeast-1.turso.io"
-TURSO_TOKEN = "eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9.eyJhIjoicnciLCJpYXQiOjE3NzM5NDgwNTgsImlkIjoiMDE5ZDA3OGItMjEwMS03OGU1LWE5ZjctZjMyOTUwODEyZjE1IiwicmlkIjoiMDMwMDA1YzctOGI2YS00NWUwLWExMWMtZGNhN2FiMTc3MDFjIn0.k47AO8qry9b9J9bcR7cAQAKYCJhtFCmvaLS1K2UZ5HdeVlKcjO6iiQZT600AzJFcML12JzQd6-viSqnS3UOwCw"
+TURSO_URL = os.environ.get("TURSO_DATABASE_URL", "https://cw-makimaki1006.aws-ap-northeast-1.turso.io")
+TURSO_TOKEN = os.environ.get("TURSO_AUTH_TOKEN")
+if not TURSO_TOKEN:
+    raise ValueError("TURSO_AUTH_TOKEN environment variable is required")
 HEADERS = {"Authorization": f"Bearer {TURSO_TOKEN}", "Content-Type": "application/json"}
 BATCH_SIZE = 50
 CSV_DIR = r"C:\Users\fuji1\OneDrive\デスクトップ\Salesforce_List\data\output\kaigo_scraping\by_service"

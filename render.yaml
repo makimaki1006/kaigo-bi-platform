@@ -15,7 +15,7 @@ services:
     image:
       url: ghcr.io/makimaki1006/kaigo-bi-platform:latest
     region: singapore
-    plan: starter
+    plan: free
     numInstances: 1
     healthCheckPath: /api/health
     envVars:
