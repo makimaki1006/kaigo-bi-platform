@@ -306,28 +306,39 @@ def step2_upload_to_turso(merged_csv_path: Path):
 
     print(f"  CSVカラム数: {len(all_csv_cols)}")
 
-    # テーブル再作成（DROP + CREATE を同一バッチで実行）
+    # テーブル再作成（DROP + CREATE + インデックスを全て同一バッチで実行）
     create_sql = build_create_table_sql(all_csv_cols)
     print("  既存テーブルをDROP + 新規テーブル作成中...")
     stmts = [
         {"type": "execute", "stmt": {"sql": "DROP TABLE IF EXISTS facilities"}},
         {"type": "execute", "stmt": {"sql": create_sql}},
+        {"type": "execute", "stmt": {"sql": 'CREATE INDEX IF NOT EXISTS idx_facilities_phone ON facilities("電話番号")'}},
+        {"type": "execute", "stmt": {"sql": 'CREATE INDEX IF NOT EXISTS idx_facilities_corp_number ON facilities("法人番号")'}},
+        {"type": "execute", "stmt": {"sql": 'CREATE INDEX IF NOT EXISTS idx_facilities_prefecture ON facilities("prefecture")'}},
+        {"type": "execute", "stmt": {"sql": 'CREATE INDEX IF NOT EXISTS idx_facilities_corp_type ON facilities("corp_type")'}},
+        {"type": "execute", "stmt": {"sql": 'CREATE INDEX IF NOT EXISTS idx_facilities_service ON facilities("サービスコード")'}},
+        {"type": "execute", "stmt": {"sql": 'CREATE INDEX IF NOT EXISTS idx_facilities_pref_code ON facilities("都道府県コード")'}},
     ]
-    execute_sql(stmts)
-    print("  テーブル作成完了")
+    result = execute_sql(stmts)
+    # エラーチェック
+    for i, r in enumerate(result.get("results", [])):
+        if "error" in r:
+            print(f"    DDLエラー (stmt {i}): {r['error']}")
+            raise Exception(f"テーブル作成に失敗: {r['error']}")
+    print("  テーブル + インデックス作成完了")
 
-    # インデックス作成
-    indices = [
-        'CREATE INDEX IF NOT EXISTS idx_facilities_phone ON facilities("電話番号")',
-        'CREATE INDEX IF NOT EXISTS idx_facilities_corp_number ON facilities("法人番号")',
-        'CREATE INDEX IF NOT EXISTS idx_facilities_prefecture ON facilities("prefecture")',
-        'CREATE INDEX IF NOT EXISTS idx_facilities_corp_type ON facilities("corp_type")',
-        'CREATE INDEX IF NOT EXISTS idx_facilities_service ON facilities("サービスコード")',
-        'CREATE INDEX IF NOT EXISTS idx_facilities_pref_code ON facilities("都道府県コード")',
-    ]
-    for idx_sql in indices:
-        execute_single(idx_sql)
-    print("  インデックス作成完了")
+    # テーブル存在確認（INSERT前の安全チェック）
+    import time as _time
+    for attempt in range(5):
+        try:
+            check = execute_single("SELECT COUNT(*) FROM facilities")
+            print(f"  テーブル存在確認OK (attempt {attempt+1})")
+            break
+        except Exception as e:
+            print(f"  テーブル確認リトライ {attempt+1}/5: {e}")
+            _time.sleep(2)
+    else:
+        raise Exception("テーブルが作成されていません")
 
     # INSERT文構築
     # 全カラム + 派生カラム
