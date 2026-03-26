@@ -306,13 +306,14 @@ def step2_upload_to_turso(merged_csv_path: Path):
 
     print(f"  CSVカラム数: {len(all_csv_cols)}")
 
-    # テーブル再作成
-    print("  既存テーブルをDROP...")
-    execute_single("DROP TABLE IF EXISTS facilities")
-
+    # テーブル再作成（DROP + CREATE を同一バッチで実行）
     create_sql = build_create_table_sql(all_csv_cols)
-    print("  新規テーブル作成中...")
-    execute_single(create_sql)
+    print("  既存テーブルをDROP + 新規テーブル作成中...")
+    stmts = [
+        {"type": "execute", "stmt": {"sql": "DROP TABLE IF EXISTS facilities"}},
+        {"type": "execute", "stmt": {"sql": create_sql}},
+    ]
+    execute_sql(stmts)
     print("  テーブル作成完了")
 
     # インデックス作成
