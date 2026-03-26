@@ -133,7 +133,13 @@ def step1_merge_csv() -> Path:
     delta_cols = []
     with open(delta_path, "r", encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
-        delta_cols = [c for c in reader.fieldnames if c not in ("事業所番号", "サービスコード", "都道府県コード")]
+        # 既存CSVと重複するキーカラム・メタカラムを除外
+        existing_cols_check = set()
+        with open(EXISTING_CSV, "r", encoding="utf-8-sig") as ef:
+            existing_cols_check = set(csv.DictReader(ef).fieldnames)
+        delta_cols = [c for c in reader.fieldnames
+                      if c not in ("事業所番号", "サービスコード", "都道府県コード")
+                      and c not in existing_cols_check]
         for row in reader:
             key = row.get("事業所番号", "").strip()
             if key:
