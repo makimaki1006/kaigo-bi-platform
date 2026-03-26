@@ -11,7 +11,7 @@ use serde_json::json;
 /// 統一エラー型
 #[derive(Debug)]
 pub enum AppError {
-    /// 内部サーバーエラー（Polars処理失敗等）
+    /// 内部サーバーエラー（内部処理エラー）
     Internal(String),
     /// リソースが見つからない
     NotFound(String),
@@ -46,5 +46,4 @@ impl IntoResponse for AppError {
     }
 }
 
-// Polarsは不要になったため、エラー変換も削除
-// DataStore/aggregator経由のPolars使用は全てTurso SQLに移行済み
+// DataStore/aggregator経由のデータ処理は全てTurso SQLに移行済み
