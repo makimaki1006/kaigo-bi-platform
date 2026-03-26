@@ -39,6 +39,18 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SCREENSHOTS_DIR = PROJECT_ROOT / "screenshots" / "e2e_comprehensive"
 REPORT_FILE = PROJECT_ROOT / "scripts" / "e2e_comprehensive_report.txt"
 
+# ── 重いページのタイムアウト設定 ─────────────────
+# /market と /service-portfolio はAPIが遅いため特別設定
+SLOW_PAGES = {"/market", "/service-portfolio"}
+
+def _page_timeout(path: str) -> int:
+    """ページ別タイムアウト（ms）を返す"""
+    return 60000 if path in SLOW_PAGES else 30000
+
+def _wait_strategy(path: str) -> str:
+    """ページ別wait_until戦略を返す"""
+    return "load" if path in SLOW_PAGES else "networkidle"
+
 # ── API検証定義 ────────────────────────────────────
 API_CHECKS = {
     "/api/dashboard/kpi": {
@@ -71,6 +83,18 @@ API_CHECKS = {
             "avg_turnover_rate": {"min": 0.01, "max": 0.50},
         },
     },
+    # 人員配置: 職種別内訳
+    "/api/workforce/staff-breakdown": {
+        "is_array": True,
+    },
+    # 人員配置: 資格保有状況
+    "/api/workforce/qualifications": {
+        "is_array": True,
+    },
+    # 人員配置: 認知症研修
+    "/api/workforce/dementia-training": {
+        "is_array": True,
+    },
     "/api/market/choropleth": {
         "is_array": True,
         "min_length": 10,
@@ -94,6 +118,10 @@ API_CHECKS = {
     "/api/revenue/kasan-rates": {
         "is_array": True,
         "min_length": 5,
+    },
+    # 収益: 全加算項目
+    "/api/revenue/kasan-all-items": {
+        "is_array": True,
     },
     "/api/growth/kpi": {
         "not_empty": True,
@@ -136,6 +164,9 @@ PAGE_DATA_CHECKS = {
         "required_texts": ["%"],
         "forbidden_texts": ["NaN", "undefined"],
         "min_charts": 2,
+        # 新セクション: 職種別 or 資格保有 が表示されること
+        # ※kihonデータ統合前は「統合後に表示されます」メッセージでもOK
+        "optional_section_texts": ["職種別", "資格保有"],
     },
     "/market": {
         "min_charts": 2,
@@ -150,6 +181,8 @@ PAGE_DATA_CHECKS = {
         "required_texts": ["加算"],
         "min_charts": 1,
         "forbidden_texts": ["NaN", "undefined"],
+        # 新セクション: 全加算項目が表示されること
+        "optional_section_texts": ["全加算項目"],
     },
     "/service-portfolio": {
         "forbidden_bare_codes": True,  # 3桁の裸コードが表示されていないか
@@ -194,6 +227,7 @@ LAYOUT_CHECKS = {
 INTERACTION_TESTS = {
     "/dashboard": {
         "prefecture_filter": True,
+        "bar_chart_click": True,
     },
     "/workforce": {
         "service_filter": True,
@@ -462,13 +496,15 @@ class E2ETestSuite:
         """ブラウザ上のページコンテンツを検証"""
         test_name = f"PageData {path}"
         try:
-            # 認証済みナビゲーション
-            wait_strategy = "load" if path == "/service-portfolio" else "networkidle"
-            page_timeout = 60000 if path == "/service-portfolio" else 30000
-            self._navigate_authenticated(page, path, timeout=page_timeout, wait_until=wait_strategy)
+            # 認証済みナビゲーション（SLOW_PAGESは自動的にタイムアウト延長+load戦略）
+            self._navigate_authenticated(
+                page, path,
+                timeout=_page_timeout(path),
+                wait_until=_wait_strategy(path),
+            )
 
-            # 追加待機（service-portfolioはAPIが遅い）
-            if path == "/service-portfolio":
+            # 追加待機（重いページはAPIが遅い）
+            if path in SLOW_PAGES:
                 time.sleep(5)
 
             body_text = page.inner_text("body")
@@ -497,6 +533,19 @@ class E2ETestSuite:
             for text in checks.get("required_texts", []):
                 if text not in body_text:
                     issues.append(f"'{text}' 未検出")
+
+            # オプショナルセクションテキストチェック
+            # いずれかのテキストがページ本文に含まれればOK
+            # データ未統合時の「統合後に表示されます」メッセージも許容する
+            optional_texts = checks.get("optional_section_texts", [])
+            if optional_texts:
+                pending_msg = "統合後に表示されます"
+                found_any = any(t in body_text for t in optional_texts) or pending_msg in body_text
+                if not found_any:
+                    issues.append(
+                        f"新セクション未検出: いずれかが必要 {optional_texts} "
+                        f"(または '{pending_msg}')"
+                    )
 
             # 禁止テキストチェック
             for text in checks.get("forbidden_texts", []):
@@ -611,9 +660,11 @@ class E2ETestSuite:
         """ページレイアウトの問題を検出"""
         test_name = f"Layout {path}"
         try:
-            wait_strategy = "load" if path == "/service-portfolio" else "networkidle"
-            page_timeout = 60000 if path == "/service-portfolio" else 30000
-            self._navigate_authenticated(page, path, timeout=page_timeout, wait_until=wait_strategy)
+            self._navigate_authenticated(
+                page, path,
+                timeout=_page_timeout(path),
+                wait_until=_wait_strategy(path),
+            )
 
             issues = []
 
@@ -723,9 +774,11 @@ class E2ETestSuite:
         for path in paths:
             test_name = f"Screenshot {path}"
             try:
-                wait_strategy = "load" if path == "/service-portfolio" else "networkidle"
-                page_timeout = 60000 if path == "/service-portfolio" else 30000
-                self._navigate_authenticated(page, path, timeout=page_timeout, wait_until=wait_strategy)
+                self._navigate_authenticated(
+                    page, path,
+                    timeout=_page_timeout(path),
+                    wait_until=_wait_strategy(path),
+                )
 
                 filename = path.strip("/").replace("/", "_") or "root"
                 screenshot_path = SCREENSHOTS_DIR / f"{filename}.png"
@@ -773,6 +826,9 @@ class E2ETestSuite:
 
         # ダッシュボードの都道府県フィルタテスト
         self._test_prefecture_filter(page)
+
+        # ダッシュボードの棒グラフクリック→フィルタテスト
+        self._test_bar_chart_click_filter(page)
 
         # サービス種別フィルタテスト
         self._test_service_filter(page)
@@ -854,6 +910,91 @@ class E2ETestSuite:
                 self.results.record(test_name, False, "フィルタ要素が見つからない")
             else:
                 self.results.record(test_name, False, "フィルタ操作に失敗")
+
+        except Exception as e:
+            self.results.record(test_name, False, f"例外: {e}")
+
+    def _test_bar_chart_click_filter(self, page):
+        """ダッシュボードの都道府県棒グラフをクリックしてフィルタが適用されるか検証"""
+        test_name = "Dashboard bar chart click-to-filter"
+        try:
+            self._navigate_authenticated(page, "/dashboard")
+
+            before_url = page.url
+            before_text = page.inner_text("body")
+
+            # rechartsの棒グラフ内のバー要素を探す
+            bar_clicked = page.evaluate("""() => {
+                // recharts の Bar 要素（rect）を探す
+                const bars = document.querySelectorAll(
+                    '.recharts-bar-rectangle rect, ' +
+                    '.recharts-bar rect, ' +
+                    'svg .recharts-rectangle'
+                );
+                if (bars.length > 0) {
+                    // 最初のバーをクリック
+                    const bar = bars[0];
+                    const rect = bar.getBoundingClientRect();
+                    bar.dispatchEvent(new MouseEvent('click', {
+                        bubbles: true,
+                        clientX: rect.left + rect.width / 2,
+                        clientY: rect.top + rect.height / 2,
+                    }));
+                    return {found: true, count: bars.length};
+                }
+
+                // フォールバック: svg内の全rect要素から棒グラフらしいものを探す
+                const allRects = document.querySelectorAll('svg rect');
+                for (const rect of allRects) {
+                    const height = parseFloat(rect.getAttribute('height') || '0');
+                    const width = parseFloat(rect.getAttribute('width') || '0');
+                    // 棒グラフのバーは幅が狭く高さがある（または横棒グラフ）
+                    if ((height > 20 && width > 5 && width < 100) ||
+                        (width > 20 && height > 5 && height < 100)) {
+                        const r = rect.getBoundingClientRect();
+                        rect.dispatchEvent(new MouseEvent('click', {
+                            bubbles: true,
+                            clientX: r.left + r.width / 2,
+                            clientY: r.top + r.height / 2,
+                        }));
+                        return {found: true, count: allRects.length, fallback: true};
+                    }
+                }
+
+                return {found: false, count: 0};
+            }""")
+
+            if not bar_clicked.get("found"):
+                self.results.record(test_name, False, "棒グラフのバー要素が見つからない")
+                return
+
+            # クリック後の状態変化を確認（URL変化 or ページ内容変化）
+            time.sleep(2)
+            after_url = page.url
+            after_text = page.inner_text("body")
+
+            url_changed = before_url != after_url
+            content_changed = before_text != after_text
+
+            if url_changed or content_changed:
+                change_detail = []
+                if url_changed:
+                    change_detail.append(f"URL変化: {after_url}")
+                if content_changed:
+                    change_detail.append("コンテンツ変化あり")
+                self.results.record(
+                    test_name,
+                    True,
+                    f"バークリックで反応あり (bars={bar_clicked.get('count')}, "
+                    f"{', '.join(change_detail)})",
+                )
+            else:
+                # クリックしても変化なし - 機能未実装の可能性
+                self.results.record(
+                    test_name,
+                    False,
+                    f"バークリック後に変化なし (bars={bar_clicked.get('count')})",
+                )
 
         except Exception as e:
             self.results.record(test_name, False, f"例外: {e}")

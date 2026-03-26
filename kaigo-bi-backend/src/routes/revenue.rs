@@ -74,5 +74,6 @@ async fn get_kasan_all_items(
             return Ok(Json(cached.clone()));
         }
     }
-    Ok(Json(serde_json::json!([])))
+    let result = sql_aggregator::kasan_all_items(&state.db, &params).await?;
+    Ok(Json(result))
 }

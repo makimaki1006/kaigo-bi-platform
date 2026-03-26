@@ -97,7 +97,17 @@ def fetch_all_rows():
     while offset < total:
         sql = f"SELECT * FROM facilities LIMIT {PAGE_SIZE} OFFSET {offset}"
         result = execute_single(sql)
-        rows_data = result["results"][0]["response"]["result"]["rows"]
+        # レスポンスのエラーチェック
+        res = result.get("results", [{}])[0]
+        if "error" in res:
+            print(f"\n  SQLエラー (offset={offset}): {res['error']}")
+            break
+        try:
+            rows_data = res["response"]["result"]["rows"]
+        except (KeyError, TypeError) as e:
+            print(f"\n  レスポンス解析エラー (offset={offset}): {e}")
+            print(f"  レスポンス: {str(res)[:200]}")
+            break
 
         for row in rows_data:
             parsed = {}

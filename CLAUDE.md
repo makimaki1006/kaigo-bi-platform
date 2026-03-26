@@ -876,6 +876,71 @@ python scripts/export_salesforce.py
 | `scripts/retry_media_20260310.py` | リトライ v1（LastName除外等） |
 | `scripts/retry_media_20260310_v2.py` | リトライ v2（Prefecture修正、全角数字修正） |
 
+---
+
+### 介護BIダッシュボード（kaigo-bi）
+
+**アーキテクチャ**: 方式D（Python事前集計 → Turso kpi_cache → Rust API）
+
+| レイヤー | 技術 | 場所 |
+|---------|------|------|
+| フロントエンド | Next.js 14 + React 18 + Recharts | `kaigo-bi-frontend/` |
+| バックエンド | Rust/Axum + libsql (Turso) | `kaigo-bi-backend/` |
+| ETL | Python (pandas) | `scripts/aggregate_to_cache.py` |
+| DB | Turso (LibSQL) x 2 | 施設データ + 外部統計 |
+| デプロイ | Docker + Render (Free plan) | `.github/workflows/docker-build.yml` |
+
+#### データフロー
+
+```
+スクレイピング → CSV → Turso facilities → Python集計 → kpi_cache → Rust API → Next.js
+```
+
+#### 主要スクリプト
+
+| スクリプト | 用途 |
+|-----------|------|
+| `scripts/scrape_kaigo_full.py` | 介護情報公表システム全国スクレイピング |
+| `scripts/scrape_kihon_delta.py` | 詳細ページ差分スクレイピング（15並列） |
+| `scripts/merge_kihon_and_reload.py` | CSV結合→Tursoアップロード→再集計 |
+| `scripts/aggregate_to_cache.py` | 事前集計パイプライン（36キー） |
+| `scripts/upload_full_services_to_turso.py` | Tursoへのデータアップロード |
+| `scripts/e2e_test_comprehensive.py` | 包括的E2Eテスト（45項目） |
+| `scripts/turso_helpers.py` | Turso DB共通ヘルパー |
+
+#### 環境変数（必須）
+
+| 変数 | 用途 |
+|------|------|
+| `TURSO_DATABASE_URL` | メインTurso DB URL |
+| `TURSO_AUTH_TOKEN` | メインTurso認証トークン |
+| `EXTERNAL_DB_URL` | 外部統計Turso DB URL |
+| `EXTERNAL_DB_TOKEN` | 外部統計Turso認証トークン |
+| `JWT_SECRET` | JWT認証シークレット |
+
+#### 運用手順
+
+**データ更新時:**
+```bash
+# 1. スクレイピング（6-12時間）
+python scripts/scrape_kihon_delta.py
+
+# 2. マージ→アップロード→再集計
+$env:TURSO_DATABASE_URL = "..."
+$env:TURSO_AUTH_TOKEN = "..."
+python scripts/merge_kihon_and_reload.py
+
+# 3. ビルド→デプロイ
+# GitHub Actions > Run workflow > Render自動pull
+```
+
+**テスト:**
+```bash
+python scripts/e2e_test_comprehensive.py
+```
+
+---
+
 ## 今後の改善候補
 
 （このセクションはsuggest-claude-mdコマンドで自動更新されます）

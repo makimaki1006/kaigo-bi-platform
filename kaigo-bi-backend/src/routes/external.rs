@@ -4,10 +4,23 @@
 
 use axum::{extract::State, routing::get, Json, Router};
 use serde::Serialize;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::error::AppError;
 use crate::routes::SharedState;
+
+/// 介護業界賃金補正係数（全産業平均の75%で積算）
+const CARE_INDUSTRY_WAGE_FACTOR: f64 = 0.75;
+/// 社会保険料係数（法定福利費を含む）
+const SOCIAL_INSURANCE_FACTOR: f64 = 1.15;
+/// 光熱水費の基準単価（円/人・月）
+const BASE_UTILITY_COST: f64 = 15_000.0;
+/// 建物維持費の基準単価（円/定員・月）
+const BASE_MAINTENANCE_COST: f64 = 50_000.0;
+/// 加算取得の最大種類数（スコア正規化用）
+const MAX_KASAN_COUNT: f64 = 13.0;
+/// 定員フィルタ上限値（異常値を除外するための閾値）
+const MAX_CAPACITY_FILTER: u32 = 500;
 
 /// 外部統計ルーター
 pub fn router() -> Router<SharedState> {
@@ -106,7 +119,7 @@ async fn hiring_difficulty(
         .await
         .map_err(|e| AppError::Internal(format!("外部DBクエリエラー: {}", e)))?;
 
-    let mut ext_data: std::collections::HashMap<String, (f64, f64)> = std::collections::HashMap::new();
+    let mut ext_data: HashMap<String, (f64, f64)> = HashMap::new();
     let mut current = ext_rows;
     loop {
         match current.next().await {
@@ -177,7 +190,7 @@ async fn hiring_difficulty(
 
 async fn cost_estimation(
     State(state): State<SharedState>,
-    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> Result<Json<CostEstimation>, AppError> {
     let external_db = state.external_db.as_ref().ok_or_else(|| {
         AppError::ServiceUnavailable("外部統計データベースが接続されていません".into())
@@ -198,12 +211,10 @@ async fn cost_estimation(
         _ => 250000.0,
     };
 
-    // 人件費推定: 従業員数 × 平均月給(千円→円) × 介護業界補正(0.75) × 12ヶ月 × 社会保険料係数(1.15)
+    // 人件費推定: 従業員数 × 平均月給(千円→円) × 介護業界補正 × 12ヶ月 × 社会保険料係数
     // 外部DBのavg_monthly_wageは千円単位（例: 288.5 = 28.85万円）
-    // 介護業界補正: 全産業平均の75%で積算（介護職の賃金水準は全産業平均より低い）
-    let care_industry_factor = 0.75;
-    let avg_wage_yen = avg_wage * 1000.0 * care_industry_factor;
-    let annual_cost = staff_count as f64 * avg_wage_yen * 12.0 * 1.15;
+    let avg_wage_yen = avg_wage * 1000.0 * CARE_INDUSTRY_WAGE_FACTOR;
+    let annual_cost = staff_count as f64 * avg_wage_yen * 12.0 * SOCIAL_INSURANCE_FACTOR;
 
     Ok(Json(CostEstimation {
         prefecture,
@@ -252,15 +263,6 @@ struct FinancialHealthResponse {
     data_sources: Vec<String>,
 }
 
-/// スコアからランクを判定
-fn score_to_rank(score: f64) -> char {
-    if score >= 80.0 { 'S' }
-    else if score >= 60.0 { 'A' }
-    else if score >= 40.0 { 'B' }
-    else if score >= 20.0 { 'C' }
-    else { 'D' }
-}
-
 /// GET /api/external/financial-health - 都道府県別の財務健全度スコア（SQL版）
 async fn financial_health(
     State(state): State<SharedState>,
@@ -268,28 +270,30 @@ async fn financial_health(
     let conn = state.db.connect().map_err(|e| AppError::Internal(format!("DB接続エラー: {}", e)))?;
 
     // 都道府県別にスコアを集計するSQL
-    let sql = "SELECT
+    let sql = format!("SELECT
         prefecture,
         COUNT(*) as cnt,
         AVG(
             ((COALESCE(\"品質_BCP策定\", 0) + COALESCE(\"品質_ICT活用\", 0) + COALESCE(\"品質_第三者評価\", 0) + COALESCE(\"品質_賠償保険\", 0)) * 25.0) * 0.25
             + ((1.0 - COALESCE(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate ELSE 0.0 END, 0.0)) * 50.0
                + COALESCE(CASE WHEN fulltime_ratio BETWEEN 0.0 AND 1.0 THEN fulltime_ratio ELSE 0.0 END, 0.0) * 50.0) * 0.25
-            + (COALESCE(CAST(kasan_count AS REAL), 0.0) / 13.0 * 100.0) * 0.25
+            + (COALESCE(CAST(kasan_count AS REAL), 0.0) / {kasan} * 100.0) * 0.25
             + (MIN(COALESCE(years_in_business, 0.0) / 20.0, 1.0) * 100.0) * 0.25
         ) as avg_total,
         AVG((COALESCE(\"品質_BCP策定\", 0) + COALESCE(\"品質_ICT活用\", 0) + COALESCE(\"品質_第三者評価\", 0) + COALESCE(\"品質_賠償保険\", 0)) * 25.0) as avg_quality,
         AVG((1.0 - COALESCE(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate ELSE 0.0 END, 0.0)) * 50.0
             + COALESCE(CASE WHEN fulltime_ratio BETWEEN 0.0 AND 1.0 THEN fulltime_ratio ELSE 0.0 END, 0.0) * 50.0) as avg_hr,
-        AVG(COALESCE(CAST(kasan_count AS REAL), 0.0) / 13.0 * 100.0) as avg_revenue,
+        AVG(COALESCE(CAST(kasan_count AS REAL), 0.0) / {kasan} * 100.0) as avg_revenue,
         AVG(MIN(COALESCE(years_in_business, 0.0) / 20.0, 1.0) * 100.0) as avg_stability
     FROM facilities
     WHERE prefecture IS NOT NULL AND prefecture != ''
     GROUP BY prefecture
-    ORDER BY avg_total DESC";
+    ORDER BY avg_total DESC",
+        kasan = MAX_KASAN_COUNT
+    );
 
     let rows = conn
-        .query(sql, ())
+        .query(&sql, ())
         .await
         .map_err(|e| AppError::Internal(format!("財務健全度クエリエラー: {}", e)))?;
 
@@ -306,7 +310,10 @@ async fn financial_health(
                 let avg_revenue: f64 = row.get(5).unwrap_or(0.0);
                 let avg_stability: f64 = row.get(6).unwrap_or(0.0);
 
-                // ランク分布は概算（SQLで正確にCASE分けするのは複雑なため近似計算）
+                // 注意: ランク分布は近似値。都道府県の平均スコアで全施設を同一ランクに
+                // 分類しているため、実際の分布とは異なる。正確な分布を得るには
+                // 施設個別スコアでCASE分けするSQLが必要だが、パフォーマンスとの
+                // トレードオフで現在は概算を採用している。
                 let n = cnt as usize;
                 let dist = RankDistribution {
                     s: if avg_total >= 80.0 { n } else { 0 },
@@ -389,7 +396,7 @@ async fn service_portfolio(
         .await
         .map_err(|e| AppError::Internal(format!("サービス名クエリエラー: {}", e)))?;
 
-    let mut code_to_name: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut code_to_name: HashMap<String, String> = HashMap::new();
     let mut name_cursor = name_rows;
     loop {
         match name_cursor.next().await {
@@ -412,14 +419,13 @@ async fn service_portfolio(
     }
 
     // 法人番号ごとにサービスコードの集合を構築
-    let conn2 = state.db.connect().map_err(|e| AppError::Internal(format!("DB接続エラー: {}", e)))?;
-    let corp_rows = conn2
+    let corp_rows = conn
         .query("SELECT \"法人番号\", \"サービスコード\" FROM facilities WHERE \"法人番号\" IS NOT NULL AND \"法人番号\" != '' AND \"サービスコード\" IS NOT NULL AND \"サービスコード\" != ''", ())
         .await
         .map_err(|e| AppError::Internal(format!("法人サービスクエリエラー: {}", e)))?;
 
-    let mut corp_services: std::collections::HashMap<String, std::collections::HashSet<String>> =
-        std::collections::HashMap::new();
+    let mut corp_services: HashMap<String, HashSet<String>> =
+        HashMap::new();
 
     let mut corp_cursor = corp_rows;
     loop {
@@ -447,7 +453,7 @@ async fn service_portfolio(
     let multi_service_corps = corp_services.values().filter(|s| s.len() > 1).count();
 
     // サービス組み合わせ頻度をカウント
-    let mut combo_counts: std::collections::HashMap<Vec<String>, usize> = std::collections::HashMap::new();
+    let mut combo_counts: HashMap<Vec<String>, usize> = HashMap::new();
     for services in corp_services.values() {
         let mut sorted: Vec<String> = services.iter().cloned().collect();
         sorted.sort();
@@ -469,7 +475,7 @@ async fn service_portfolio(
 
     // サービスペア間の共起分析
     // まずサービス別の法人数を集計
-    let mut service_corp_count: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut service_corp_count: HashMap<String, usize> = HashMap::new();
     for services in corp_services.values() {
         for svc in services {
             *service_corp_count.entry(svc.clone()).or_insert(0) += 1;
@@ -477,7 +483,7 @@ async fn service_portfolio(
     }
 
     // ペア共起数
-    let mut pair_counts: std::collections::HashMap<(String, String), usize> = std::collections::HashMap::new();
+    let mut pair_counts: HashMap<(String, String), usize> = HashMap::new();
     for services in corp_services.values() {
         let svcs: Vec<String> = {
             let mut v: Vec<String> = services.iter().cloned().collect();
@@ -559,7 +565,7 @@ struct CostBreakdown {
 /// GET /api/external/cost-breakdown - 総運営コスト推定（人件費+光熱水費+建物維持費+土地施設費）
 async fn cost_breakdown(
     State(state): State<SharedState>,
-    axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
+    axum::extract::Query(params): axum::extract::Query<HashMap<String, String>>,
 ) -> Result<Json<CostBreakdownResponse>, AppError> {
     let external_db = state.external_db.as_ref().ok_or_else(|| {
         AppError::ServiceUnavailable("外部統計データベースが接続されていません".into())
@@ -593,16 +599,13 @@ async fn cost_breakdown(
             _ => 250.0,
         }
     };
-    // 介護業界補正: 全産業平均の75%（介護職の賃金水準は全産業平均より低い）
-    let care_industry_factor = 0.75;
-    let avg_wage_yen = avg_wage_1k * 1000.0 * care_industry_factor;
+    let avg_wage_yen = avg_wage_1k * 1000.0 * CARE_INDUSTRY_WAGE_FACTOR;
 
-    // 人件費: staff_count * avg_monthly_wage(介護業界補正済) * 12 * 1.15（社会保険料）
-    let personnel_annual = staff_count as f64 * avg_wage_yen * 12.0 * 1.15;
+    // 人件費: staff_count * avg_monthly_wage(介護業界補正済) * 12 * 社会保険料係数
+    let personnel_annual = staff_count as f64 * avg_wage_yen * 12.0 * SOCIAL_INSURANCE_FACTOR;
 
     // 2. 気候データ取得（気温による光熱費補正）
-    let conn2 = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
-    let climate_rows = conn2
+    let climate_rows = conn
         .query(
             "SELECT avg_temperature FROM v2_external_climate WHERE prefecture = ?1 ORDER BY fiscal_year DESC LIMIT 1",
             [prefecture.clone()],
@@ -623,19 +626,18 @@ async fn cost_breakdown(
         }
     };
 
-    // 光熱水費: capacity * 基準単価(15000) * 12 * 寒冷地補正
-    let base_cost_per_person: f64 = 15000.0;
+    // 光熱水費: capacity * 基準単価 * 12 * 寒冷地補正
+    let base_cost_per_person: f64 = BASE_UTILITY_COST;
     let heating_factor = (1.0_f64).max((15.0 - avg_temperature) / 10.0);
     let utility_annual = capacity as f64 * base_cost_per_person * 12.0 * heating_factor;
 
-    // 3. 建物維持費: capacity * 50000 * 12 * 経年補正
-    let cost_per_capacity: f64 = 50000.0;
+    // 3. 建物維持費: capacity * 基準修繕単価 * 12 * 経年補正
+    let cost_per_capacity: f64 = BASE_MAINTENANCE_COST;
     let age_factor = 1.0 + (years_in_business as f64 - 10.0).max(0.0) * 0.02;
     let building_annual = capacity as f64 * cost_per_capacity * 12.0 * age_factor;
 
     // 4. 土地・施設関連費: 家計住居費ベース推定
-    let conn3 = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
-    let housing_rows = conn3
+    let housing_rows = conn
         .query(
             "SELECT monthly_amount FROM v2_external_household_spending WHERE prefecture = ?1 AND category LIKE '%住居%' LIMIT 1",
             [prefecture.clone()],
@@ -685,24 +687,24 @@ async fn cost_breakdown(
                 annual: personnel_rounded,
                 pct: pct(personnel_annual),
                 note: format!(
-                    "従業員{}名 x 月給{:.0}円（全産業平均×0.75介護業界補正） x 12ヶ月 x 社保1.15",
-                    staff_count, avg_wage_yen
+                    "従業員{}名 x 月給{:.0}円（全産業平均×{:.2}介護業界補正） x 12ヶ月 x 社保{:.2}",
+                    staff_count, avg_wage_yen, CARE_INDUSTRY_WAGE_FACTOR, SOCIAL_INSURANCE_FACTOR
                 ),
             },
             utility: CostComponent {
                 annual: utility_rounded,
                 pct: pct(utility_annual),
                 note: format!(
-                    "定員{}名 x 基準単価15,000円 x 12 x 気候補正{:.2}（平均気温{:.1}℃）",
-                    capacity, heating_factor, avg_temperature
+                    "定員{}名 x 基準単価{:.0}円 x 12 x 気候補正{:.2}（平均気温{:.1}℃）",
+                    capacity, BASE_UTILITY_COST, heating_factor, avg_temperature
                 ),
             },
             building: CostComponent {
                 annual: building_rounded,
                 pct: pct(building_annual),
                 note: format!(
-                    "定員{}名 x 修繕積立50,000円 x 12 x 経年補正{:.2}（築{}年）",
-                    capacity, age_factor, years_in_business
+                    "定員{}名 x 修繕積立{:.0}円 x 12 x 経年補正{:.2}（築{}年）",
+                    capacity, BASE_MAINTENANCE_COST, age_factor, years_in_business
                 ),
             },
             land_facility: CostComponent {
@@ -750,16 +752,7 @@ fn value_to_f64(val: &libsql::Value) -> Option<f64> {
     }
 }
 
-/// libsql::Value から String を取得するヘルパー
-#[allow(dead_code)]
-fn value_to_string(val: &libsql::Value) -> String {
-    match val {
-        libsql::Value::Text(s) => s.clone(),
-        libsql::Value::Integer(v) => v.to_string(),
-        libsql::Value::Real(v) => v.to_string(),
-        _ => String::new(),
-    }
-}
+
 
 /// libsql::Value から i64 を取得するヘルパー
 fn value_to_i64(val: &libsql::Value) -> Option<i64> {
@@ -807,19 +800,18 @@ async fn population(
     let elderly_c = elderly_col.unwrap_or_else(|| "elderly_rate".to_string());
     let working_c = working_col.unwrap_or_else(|| "working_age_rate".to_string());
 
-    let conn2 = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
     let rows = if let Some(pref) = params.get("prefecture") {
         let sql = format!(
             "SELECT {}, {}, {}, {}, {} FROM v2_external_population WHERE {} = ?1 ORDER BY {}",
             pref_c, muni_c, pop_c, elderly_c, working_c, pref_c, muni_c
         );
-        conn2.query(&sql, [pref.clone()]).await
+        conn.query(&sql, [pref.clone()]).await
     } else {
         let sql = format!(
             "SELECT {}, {}, {}, {}, {} FROM v2_external_population ORDER BY {}, {}",
             pref_c, muni_c, pop_c, elderly_c, working_c, pref_c, muni_c
         );
-        conn2.query(&sql, ()).await
+        conn.query(&sql, ()).await
     }.map_err(|e| AppError::Internal(format!("人口データクエリエラー: {}", e)))?;
 
     let mut results = Vec::new();

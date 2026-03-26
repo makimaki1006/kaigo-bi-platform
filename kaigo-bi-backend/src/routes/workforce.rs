@@ -131,7 +131,8 @@ async fn get_staff_breakdown(
             return Ok(Json(cached.clone()));
         }
     }
-    Ok(Json(serde_json::json!([])))
+    let result = sql_aggregator::workforce_staff_breakdown(&state.db, &params).await?;
+    Ok(Json(result))
 }
 
 /// GET /api/workforce/qualifications
@@ -144,7 +145,8 @@ async fn get_qualifications(
             return Ok(Json(cached.clone()));
         }
     }
-    Ok(Json(serde_json::json!([])))
+    let result = sql_aggregator::workforce_qualifications(&state.db, &params).await?;
+    Ok(Json(result))
 }
 
 /// GET /api/workforce/night-shift
@@ -157,7 +159,8 @@ async fn get_night_shift(
             return Ok(Json(cached.clone()));
         }
     }
-    Ok(Json(serde_json::json!({})))
+    let result = sql_aggregator::workforce_night_shift(&state.db, &params).await?;
+    Ok(Json(result))
 }
 
 /// GET /api/workforce/dementia-training
@@ -170,5 +173,6 @@ async fn get_dementia_training(
             return Ok(Json(cached.clone()));
         }
     }
-    Ok(Json(serde_json::json!([])))
+    let result = sql_aggregator::workforce_dementia_training(&state.db, &params).await?;
+    Ok(Json(result))
 }

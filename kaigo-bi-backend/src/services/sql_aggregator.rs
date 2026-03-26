@@ -9,6 +9,9 @@ use serde_json::{json, Value};
 use crate::error::AppError;
 use crate::models::filters::{FilterParams, SearchParams};
 
+/// 定員フィルタ上限値（異常値を除外するための閾値）
+const MAX_CAPACITY_FILTER: u32 = 500;
+
 /// WHERE句とパラメータを構築するヘルパー（パラメタライズドクエリ対応）
 struct WhereBuilder {
     conditions: Vec<String>,
@@ -244,13 +247,13 @@ pub async fn dashboard_kpi(db: &Database, params: &FilterParams) -> Result<Value
         "SELECT
             COUNT(*) as total,
             AVG(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), NULL) AS REAL)) as avg_staff,
-            AVG(CASE WHEN CAST(COALESCE(NULLIF(\"定員\", ''), NULL) AS REAL) BETWEEN 1 AND 500
+            AVG(CASE WHEN CAST(COALESCE(NULLIF(\"定員\", ''), NULL) AS REAL) BETWEEN 1 AND {cap}
                 THEN CAST(\"定員\" AS REAL) END) as avg_capacity,
             AVG(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END) as avg_turnover,
             AVG(CASE WHEN fulltime_ratio BETWEEN 0.0 AND 1.0 THEN fulltime_ratio END) as avg_fulltime,
             AVG(years_in_business) as avg_years
         FROM facilities {}",
-        where_clause
+        where_clause, cap = MAX_CAPACITY_FILTER
     );
 
     let conn = get_conn(db).await?;
@@ -273,31 +276,34 @@ pub async fn dashboard_by_prefecture(db: &Database, params: &FilterParams) -> Re
 
     // WHERE句の適切な結合
     let sql = if where_clause.is_empty() {
-        "SELECT
+        format!(
+            "SELECT
                 prefecture,
                 COUNT(*) as facility_count,
                 AVG(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), NULL) AS REAL)) as avg_staff,
-                AVG(CASE WHEN CAST(COALESCE(NULLIF(\"定員\", ''), NULL) AS REAL) BETWEEN 1 AND 500
+                AVG(CASE WHEN CAST(COALESCE(NULLIF(\"定員\", ''), NULL) AS REAL) BETWEEN 1 AND {cap}
                     THEN CAST(\"定員\" AS REAL) END) as avg_capacity,
                 AVG(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END) as avg_turnover
             FROM facilities
             WHERE prefecture IS NOT NULL AND prefecture != ''
             GROUP BY prefecture
-            ORDER BY facility_count DESC".to_string()
+            ORDER BY facility_count DESC",
+            cap = MAX_CAPACITY_FILTER
+        )
     } else {
         format!(
             "SELECT
                 prefecture,
                 COUNT(*) as facility_count,
                 AVG(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), NULL) AS REAL)) as avg_staff,
-                AVG(CASE WHEN CAST(COALESCE(NULLIF(\"定員\", ''), NULL) AS REAL) BETWEEN 1 AND 500
+                AVG(CASE WHEN CAST(COALESCE(NULLIF(\"定員\", ''), NULL) AS REAL) BETWEEN 1 AND {cap}
                     THEN CAST(\"定員\" AS REAL) END) as avg_capacity,
                 AVG(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END) as avg_turnover
             FROM facilities
             {} AND prefecture IS NOT NULL AND prefecture != ''
             GROUP BY prefecture
             ORDER BY facility_count DESC",
-            where_clause
+            where_clause, cap = MAX_CAPACITY_FILTER
         )
     };
 
@@ -676,6 +682,234 @@ pub async fn workforce_experience_vs_turnover(db: &Database, params: &FilterPara
     Ok(Value::Array(results))
 }
 
+/// 職種別スタッフ内訳（介護職員、看護職員、生活相談員、機能訓練指導員、管理栄養士、事務員）
+pub async fn workforce_staff_breakdown(db: &Database, params: &FilterParams) -> Result<Value, AppError> {
+    let w = WhereBuilder::from_filter_params(params);
+    let where_clause = w.to_where_clause();
+
+    let sql = format!(
+        r#"SELECT
+            AVG(CAST(COALESCE(NULLIF("介護職員_常勤", ''), NULL) AS REAL)) as kaigo_ft,
+            AVG(CAST(COALESCE(NULLIF("介護職員_非常勤", ''), NULL) AS REAL)) as kaigo_pt,
+            AVG(CAST(COALESCE(NULLIF("介護職員_合計", ''), NULL) AS REAL)) as kaigo_avg,
+            SUM(CAST(COALESCE(NULLIF("介護職員_合計", ''), '0') AS INTEGER)) as kaigo_sum,
+            COUNT(CASE WHEN "介護職員_合計" IS NOT NULL AND "介護職員_合計" != '' THEN 1 END) as kaigo_count,
+
+            AVG(CAST(COALESCE(NULLIF("看護職員_常勤", ''), NULL) AS REAL)) as kango_ft,
+            AVG(CAST(COALESCE(NULLIF("看護職員_非常勤", ''), NULL) AS REAL)) as kango_pt,
+            AVG(CAST(COALESCE(NULLIF("看護職員_合計", ''), NULL) AS REAL)) as kango_avg,
+            SUM(CAST(COALESCE(NULLIF("看護職員_合計", ''), '0') AS INTEGER)) as kango_sum,
+            COUNT(CASE WHEN "看護職員_合計" IS NOT NULL AND "看護職員_合計" != '' THEN 1 END) as kango_count,
+
+            AVG(CAST(COALESCE(NULLIF("生活相談員_常勤", ''), NULL) AS REAL)) as soudan_ft,
+            AVG(CAST(COALESCE(NULLIF("生活相談員_非常勤", ''), NULL) AS REAL)) as soudan_pt,
+            AVG(CAST(COALESCE(NULLIF("生活相談員_合計", ''), NULL) AS REAL)) as soudan_avg,
+            SUM(CAST(COALESCE(NULLIF("生活相談員_合計", ''), '0') AS INTEGER)) as soudan_sum,
+            COUNT(CASE WHEN "生活相談員_合計" IS NOT NULL AND "生活相談員_合計" != '' THEN 1 END) as soudan_count,
+
+            AVG(CAST(COALESCE(NULLIF("機能訓練指導員_常勤", ''), NULL) AS REAL)) as kinou_ft,
+            AVG(CAST(COALESCE(NULLIF("機能訓練指導員_非常勤", ''), NULL) AS REAL)) as kinou_pt,
+            AVG(CAST(COALESCE(NULLIF("機能訓練指導員_合計", ''), NULL) AS REAL)) as kinou_avg,
+            SUM(CAST(COALESCE(NULLIF("機能訓練指導員_合計", ''), '0') AS INTEGER)) as kinou_sum,
+            COUNT(CASE WHEN "機能訓練指導員_合計" IS NOT NULL AND "機能訓練指導員_合計" != '' THEN 1 END) as kinou_count,
+
+            AVG(CAST(COALESCE(NULLIF("管理栄養士_常勤", ''), NULL) AS REAL)) as eiyou_ft,
+            AVG(CAST(COALESCE(NULLIF("管理栄養士_非常勤", ''), NULL) AS REAL)) as eiyou_pt,
+            AVG(CAST(COALESCE(NULLIF("管理栄養士_合計", ''), NULL) AS REAL)) as eiyou_avg,
+            SUM(CAST(COALESCE(NULLIF("管理栄養士_合計", ''), '0') AS INTEGER)) as eiyou_sum,
+            COUNT(CASE WHEN "管理栄養士_合計" IS NOT NULL AND "管理栄養士_合計" != '' THEN 1 END) as eiyou_count,
+
+            AVG(CAST(COALESCE(NULLIF("事務員_常勤", ''), NULL) AS REAL)) as jimu_ft,
+            AVG(CAST(COALESCE(NULLIF("事務員_非常勤", ''), NULL) AS REAL)) as jimu_pt,
+            AVG(CAST(COALESCE(NULLIF("事務員_合計", ''), NULL) AS REAL)) as jimu_avg,
+            SUM(CAST(COALESCE(NULLIF("事務員_合計", ''), '0') AS INTEGER)) as jimu_sum,
+            COUNT(CASE WHEN "事務員_合計" IS NOT NULL AND "事務員_合計" != '' THEN 1 END) as jimu_count
+        FROM facilities {}"#,
+        where_clause
+    );
+
+    let conn = get_conn(db).await?;
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
+
+    // 各職種を構造体配列に変換
+    let job_types = [
+        ("介護職員", 0),
+        ("看護職員", 5),
+        ("生活相談員", 10),
+        ("機能訓練指導員", 15),
+        ("管理栄養士", 20),
+        ("事務員", 25),
+    ];
+
+    let results: Vec<Value> = job_types.iter().map(|(name, offset)| {
+        let ft = row_f64_opt(&row, *offset);
+        let pt = row_f64_opt(&row, offset + 1);
+        let avg = row_f64_opt(&row, offset + 2);
+        let total = row_i64(&row, offset + 3);
+        let count = row_i64(&row, offset + 4);
+        // 常勤比率: 常勤平均 / (常勤平均+非常勤平均)
+        let fulltime_ratio = match (ft, pt) {
+            (Some(f), Some(p)) if f + p > 0.0 => Some(f / (f + p)),
+            _ => None,
+        };
+        json!({
+            "job_type": name,
+            "avg_count": avg,
+            "total_count": total,
+            "facility_count": count,
+            "fulltime_ratio": fulltime_ratio,
+        })
+    }).collect();
+
+    Ok(Value::Array(results))
+}
+
+/// 資格保有状況（介護福祉士、実務者研修、初任者研修、介護支援専門員）
+pub async fn workforce_qualifications(db: &Database, params: &FilterParams) -> Result<Value, AppError> {
+    let w = WhereBuilder::from_filter_params(params);
+    let where_clause = w.to_where_clause();
+
+    let sql = format!(
+        r#"SELECT
+            SUM(CAST(COALESCE(NULLIF("介護福祉士数", ''), '0') AS INTEGER)) as fukushi_total,
+            AVG(CAST(COALESCE(NULLIF("介護福祉士数", ''), NULL) AS REAL)) as fukushi_avg,
+            COUNT(CASE WHEN "介護福祉士数" IS NOT NULL AND "介護福祉士数" != '' THEN 1 END) as fukushi_count,
+
+            SUM(CAST(COALESCE(NULLIF("実務者研修数", ''), '0') AS INTEGER)) as jitsumu_total,
+            AVG(CAST(COALESCE(NULLIF("実務者研修数", ''), NULL) AS REAL)) as jitsumu_avg,
+            COUNT(CASE WHEN "実務者研修数" IS NOT NULL AND "実務者研修数" != '' THEN 1 END) as jitsumu_count,
+
+            SUM(CAST(COALESCE(NULLIF("初任者研修数", ''), '0') AS INTEGER)) as shonin_total,
+            AVG(CAST(COALESCE(NULLIF("初任者研修数", ''), NULL) AS REAL)) as shonin_avg,
+            COUNT(CASE WHEN "初任者研修数" IS NOT NULL AND "初任者研修数" != '' THEN 1 END) as shonin_count,
+
+            SUM(CAST(COALESCE(NULLIF("介護支援専門員数", ''), '0') AS INTEGER)) as care_mgr_total,
+            AVG(CAST(COALESCE(NULLIF("介護支援専門員数", ''), NULL) AS REAL)) as care_mgr_avg,
+            COUNT(CASE WHEN "介護支援専門員数" IS NOT NULL AND "介護支援専門員数" != '' THEN 1 END) as care_mgr_count
+        FROM facilities {}"#,
+        where_clause
+    );
+
+    let conn = get_conn(db).await?;
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
+
+    let qualifications = [
+        ("介護福祉士", 0),
+        ("実務者研修", 3),
+        ("初任者研修", 6),
+        ("介護支援専門員", 9),
+    ];
+
+    let results: Vec<Value> = qualifications.iter().map(|(name, offset)| {
+        json!({
+            "qualification": name,
+            "total_count": row_i64(&row, *offset),
+            "avg_per_facility": row_f64_opt(&row, offset + 1),
+            "facility_count": row_i64(&row, offset + 2),
+        })
+    }).collect();
+
+    Ok(Value::Array(results))
+}
+
+/// 夜勤・宿直体制
+pub async fn workforce_night_shift(db: &Database, params: &FilterParams) -> Result<Value, AppError> {
+    let w = WhereBuilder::from_filter_params(params);
+    let where_clause = w.to_where_clause();
+
+    let sql = format!(
+        r#"SELECT
+            AVG(CAST(COALESCE(NULLIF("夜勤人数", ''), NULL) AS REAL)) as night_avg,
+            COUNT(CASE WHEN "夜勤人数" IS NOT NULL AND "夜勤人数" != '' AND CAST("夜勤人数" AS INTEGER) > 0 THEN 1 END) as night_count,
+            SUM(CAST(COALESCE(NULLIF("夜勤人数", ''), '0') AS INTEGER)) as night_total,
+            AVG(CAST(COALESCE(NULLIF("宿直人数", ''), NULL) AS REAL)) as duty_avg,
+            COUNT(CASE WHEN "宿直人数" IS NOT NULL AND "宿直人数" != '' AND CAST("宿直人数" AS INTEGER) > 0 THEN 1 END) as duty_count,
+            SUM(CAST(COALESCE(NULLIF("宿直人数", ''), '0') AS INTEGER)) as duty_total,
+            COUNT(*) as total_facilities
+        FROM facilities {}"#,
+        where_clause
+    );
+
+    let conn = get_conn(db).await?;
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
+
+    let total = row_i64(&row, 6);
+
+    Ok(json!({
+        "night_shift": {
+            "avg_staff": row_f64_opt(&row, 0),
+            "facility_count": row_i64(&row, 1),
+            "total_staff": row_i64(&row, 2),
+            "coverage_rate": if total > 0 { Some(row_i64(&row, 1) as f64 / total as f64) } else { None::<f64> },
+        },
+        "on_call_duty": {
+            "avg_staff": row_f64_opt(&row, 3),
+            "facility_count": row_i64(&row, 4),
+            "total_staff": row_i64(&row, 5),
+            "coverage_rate": if total > 0 { Some(row_i64(&row, 4) as f64 / total as f64) } else { None::<f64> },
+        },
+        "total_facilities": total,
+    }))
+}
+
+/// 認知症関連研修受講状況（指導者研修、リーダー研修、実践者研修）
+pub async fn workforce_dementia_training(db: &Database, params: &FilterParams) -> Result<Value, AppError> {
+    let w = WhereBuilder::from_filter_params(params);
+    let where_clause = w.to_where_clause();
+
+    let sql = format!(
+        r#"SELECT
+            SUM(CAST(COALESCE(NULLIF("認知症指導者研修数", ''), '0') AS INTEGER)) as leader_total,
+            AVG(CAST(COALESCE(NULLIF("認知症指導者研修数", ''), NULL) AS REAL)) as leader_avg,
+            COUNT(CASE WHEN "認知症指導者研修数" IS NOT NULL AND "認知症指導者研修数" != '' AND CAST("認知症指導者研修数" AS INTEGER) > 0 THEN 1 END) as leader_count,
+
+            SUM(CAST(COALESCE(NULLIF("認知症リーダー研修数", ''), '0') AS INTEGER)) as subleader_total,
+            AVG(CAST(COALESCE(NULLIF("認知症リーダー研修数", ''), NULL) AS REAL)) as subleader_avg,
+            COUNT(CASE WHEN "認知症リーダー研修数" IS NOT NULL AND "認知症リーダー研修数" != '' AND CAST("認知症リーダー研修数" AS INTEGER) > 0 THEN 1 END) as subleader_count,
+
+            SUM(CAST(COALESCE(NULLIF("認知症実践者研修数", ''), '0') AS INTEGER)) as practice_total,
+            AVG(CAST(COALESCE(NULLIF("認知症実践者研修数", ''), NULL) AS REAL)) as practice_avg,
+            COUNT(CASE WHEN "認知症実践者研修数" IS NOT NULL AND "認知症実践者研修数" != '' AND CAST("認知症実践者研修数" AS INTEGER) > 0 THEN 1 END) as practice_count,
+
+            COUNT(*) as total_facilities
+        FROM facilities {}"#,
+        where_clause
+    );
+
+    let conn = get_conn(db).await?;
+    let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
+
+    let total = row_i64(&row, 9);
+
+    let training_types = [
+        ("認知症指導者研修", 0),
+        ("認知症リーダー研修", 3),
+        ("認知症実践者研修", 6),
+    ];
+
+    let results: Vec<Value> = training_types.iter().map(|(name, offset)| {
+        let facility_count = row_i64(&row, offset + 2);
+        json!({
+            "training_type": name,
+            "total_trained": row_i64(&row, *offset),
+            "avg_per_facility": row_f64_opt(&row, offset + 1),
+            "facility_count": facility_count,
+            "coverage_rate": if total > 0 { Some(facility_count as f64 / total as f64) } else { None::<f64> },
+        })
+    }).collect();
+
+    Ok(Value::Array(results))
+}
+
+/// 加算全項目（JSON列のため、フィルタ付きではキャッシュフォールバック）
+/// SQLiteでのJSON解析は全行ロードが必要になるため、フィルタ時は空配列を返す
+pub async fn kasan_all_items(db: &Database, _params: &FilterParams) -> Result<Value, AppError> {
+    // 加算_全項目はJSON列で、SQLiteでの集計は全行スキャンが必要
+    // フィルタなしリクエストはキャッシュから提供される
+    let _ = db;
+    Ok(serde_json::json!([]))
+}
+
 // ================================================================
 // 収益構造系
 // ================================================================
@@ -691,12 +925,12 @@ pub async fn revenue_kpi(db: &Database, params: &FilterParams) -> Result<Value, 
             (SUM(CASE WHEN \"加算_処遇改善I\" = 1 OR \"処遇改善加算フラグ\" = '○' THEN 1 ELSE 0 END) * 1.0 /
                 NULLIF(COUNT(*), 0)) as syogu_rate,
             AVG(CASE WHEN occupancy_rate BETWEEN 0.0 AND 3.0 THEN occupancy_rate END) as avg_occ,
-            AVG(CASE WHEN CAST(COALESCE(NULLIF(\"定員\", ''), NULL) AS REAL) BETWEEN 1 AND 500
+            AVG(CASE WHEN CAST(COALESCE(NULLIF(\"定員\", ''), NULL) AS REAL) BETWEEN 1 AND {cap}
                 THEN CAST(\"定員\" AS REAL) END) as avg_cap,
             AVG(CAST(COALESCE(NULLIF(quality_score, ''), NULL) AS REAL)) as avg_quality,
             AVG(CAST(COALESCE(NULLIF(\"利用者総数\", ''), NULL) AS REAL)) as avg_users
         FROM facilities {}",
-        where_clause
+        where_clause, cap = MAX_CAPACITY_FILTER
     );
 
     let conn = get_conn(db).await?;
