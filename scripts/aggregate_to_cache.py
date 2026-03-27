@@ -33,7 +33,7 @@ sys.stdout.reconfigure(encoding="utf-8")
 # ============================================================
 TURSO_URL, TURSO_TOKEN = get_turso_config()
 HEADERS = get_headers(TURSO_TOKEN)
-PAGE_SIZE = 5000
+PAGE_SIZE = 2000  # 112カラムでTursoメモリ制限を回避
 
 # ============================================================
 # 加算カラム定義
