@@ -1,8 +1,9 @@
 "use client";
 
 // ===================================================
-// ログインページ
-// brand-900グラデーション背景 + ドットパターン装飾
+// サインアップページ
+// ログインページと同じbrand-900グラデーション背景
+// 登録成功で即ログイン状態 → ダッシュボードへ
 // ===================================================
 
 import { useState, useCallback, useEffect, type FormEvent } from "react";
@@ -10,13 +11,15 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthContext } from "@/components/auth/AuthProvider";
 
-export default function LoginPage() {
+export default function SignupPage() {
   const router = useRouter();
-  const { login, isAuthenticated, isLoading: authLoading } = useAuthContext();
+  const { signup, isAuthenticated, isLoading: authLoading } = useAuthContext();
 
   // フォーム状態
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -26,39 +29,44 @@ export default function LoginPage() {
       e.preventDefault();
       setError(null);
 
+      if (!name.trim()) {
+        setError("お名前を入力してください。");
+        return;
+      }
       if (!email.trim()) {
         setError("メールアドレスを入力してください。");
         return;
       }
-      if (!password) {
-        setError("パスワードを入力してください。");
+      if (password.length < 8) {
+        setError("パスワードは8文字以上で設定してください。");
+        return;
+      }
+      if (password !== passwordConfirm) {
+        setError("パスワードが一致しません。");
         return;
       }
 
       setIsSubmitting(true);
 
       try {
-        await login(email, password);
+        await signup(email, password, name);
         router.push("/dashboard");
       } catch (err) {
-
         if (err instanceof Error) {
           const msg = err.message;
           if (msg.includes("Network") || msg.includes("fetch") || msg.includes("Failed")) {
             setError("サーバーに接続できません。しばらくしてからお試しください。");
-          } else if (msg.includes("403") || msg.includes("無効") || msg.includes("期限")) {
-            setError("アカウントが無効化されているか、有効期限が切れています。");
           } else {
             setError(msg);
           }
         } else {
-          setError("ログインに失敗しました。");
+          setError("登録に失敗しました。");
         }
       } finally {
         setIsSubmitting(false);
       }
     },
-    [email, password, login, router]
+    [name, email, password, passwordConfirm, signup, router]
   );
 
   // 既にログイン済みの場合はダッシュボードにリダイレクト
@@ -71,6 +79,11 @@ export default function LoginPage() {
   if (isAuthenticated && !authLoading) {
     return null;
   }
+
+  const inputClassName = `w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm
+    focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500
+    disabled:bg-gray-50 disabled:text-gray-400
+    placeholder:text-gray-400 transition-all`;
 
   return (
     <div className="min-h-screen relative flex items-center justify-center px-4 overflow-hidden">
@@ -91,24 +104,8 @@ export default function LoginPage() {
         }}
       />
 
-      {/* 装飾: 右上の光彩 */}
-      <div
-        className="absolute -top-32 -right-32 w-96 h-96 rounded-full opacity-10"
-        style={{
-          background: "radial-gradient(circle, #818cf8 0%, transparent 70%)",
-        }}
-      />
-
-      {/* 装飾: 左下の光彩 */}
-      <div
-        className="absolute -bottom-32 -left-32 w-96 h-96 rounded-full opacity-10"
-        style={{
-          background: "radial-gradient(circle, #a5b4fc 0%, transparent 70%)",
-        }}
-      />
-
       {/* コンテンツ */}
-      <div className="relative z-10 w-full max-w-md">
+      <div className="relative z-10 w-full max-w-md py-10">
         {/* ロゴ・タイトルエリア */}
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-white mb-2">
@@ -119,11 +116,14 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* ログインカード */}
+        {/* サインアップカード */}
         <div className="bg-white rounded-2xl shadow-2xl p-8">
-          <h2 className="text-lg font-semibold text-gray-900 mb-6 text-center">
-            ログイン
+          <h2 className="text-lg font-semibold text-gray-900 mb-2 text-center">
+            無料アカウント登録
           </h2>
+          <p className="text-xs text-gray-500 mb-6 text-center">
+            クレジットカード不要。全国サマリーダッシュボードを今すぐ利用できます。
+          </p>
 
           {/* エラーメッセージ */}
           {error && (
@@ -149,8 +149,29 @@ export default function LoginPage() {
             </div>
           )}
 
-          {/* ログインフォーム */}
+          {/* サインアップフォーム */}
           <form onSubmit={handleSubmit} noValidate>
+            {/* お名前 */}
+            <div className="mb-4">
+              <label
+                htmlFor="name"
+                className="block text-sm font-medium text-gray-700 mb-1.5"
+              >
+                お名前
+              </label>
+              <input
+                id="name"
+                type="text"
+                autoComplete="name"
+                required
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                disabled={isSubmitting}
+                className={inputClassName}
+                placeholder="山田 太郎"
+              />
+            </div>
+
             {/* メールアドレス */}
             <div className="mb-4">
               <label
@@ -167,16 +188,13 @@ export default function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 disabled={isSubmitting}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm
-                  focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500
-                  disabled:bg-gray-50 disabled:text-gray-400
-                  placeholder:text-gray-400 transition-all"
+                className={inputClassName}
                 placeholder="example@company.com"
               />
             </div>
 
             {/* パスワード */}
-            <div className="mb-6">
+            <div className="mb-4">
               <label
                 htmlFor="password"
                 className="block text-sm font-medium text-gray-700 mb-1.5"
@@ -186,20 +204,38 @@ export default function LoginPage() {
               <input
                 id="password"
                 type="password"
-                autoComplete="current-password"
+                autoComplete="new-password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 disabled={isSubmitting}
-                className="w-full px-4 py-2.5 border border-gray-300 rounded-xl text-sm
-                  focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500
-                  disabled:bg-gray-50 disabled:text-gray-400
-                  placeholder:text-gray-400 transition-all"
+                className={inputClassName}
                 placeholder="8文字以上"
               />
             </div>
 
-            {/* ログインボタン */}
+            {/* パスワード確認 */}
+            <div className="mb-6">
+              <label
+                htmlFor="passwordConfirm"
+                className="block text-sm font-medium text-gray-700 mb-1.5"
+              >
+                パスワード（確認）
+              </label>
+              <input
+                id="passwordConfirm"
+                type="password"
+                autoComplete="new-password"
+                required
+                value={passwordConfirm}
+                onChange={(e) => setPasswordConfirm(e.target.value)}
+                disabled={isSubmitting}
+                className={inputClassName}
+                placeholder="もう一度入力"
+              />
+            </div>
+
+            {/* 登録ボタン */}
             <button
               type="submit"
               disabled={isSubmitting}
@@ -212,27 +248,22 @@ export default function LoginPage() {
               {isSubmitting ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>ログイン中...</span>
+                  <span>登録中...</span>
                 </>
               ) : (
-                "ログイン"
+                "無料で登録"
               )}
             </button>
           </form>
 
-          {/* サインアップリンク */}
+          {/* ログインリンク */}
           <p className="text-center text-sm text-gray-500 mt-6">
-            アカウントをお持ちでない方は{" "}
-            <Link href="/signup" className="text-brand-500 hover:text-brand-600 font-medium">
-              無料登録
+            アカウントをお持ちの方は{" "}
+            <Link href="/login" className="text-brand-500 hover:text-brand-600 font-medium">
+              ログイン
             </Link>
           </p>
         </div>
-
-        {/* フッター */}
-        <p className="text-center text-xs text-indigo-400/60 mt-6">
-          v0.4.0 | Phase 1+2+3
-        </p>
       </div>
     </div>
   );

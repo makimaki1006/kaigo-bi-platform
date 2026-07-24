@@ -16,11 +16,14 @@ interface AppShellProps {
   children: ReactNode;
 }
 
+/** サイドバー/認証ガードなしで表示する公開ページ */
+const PUBLIC_PATHS = ["/login", "/signup", "/pricing"];
+
 export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
 
-  // ログインページではサイドバー/ヘッダーなしの全画面レイアウト
-  if (pathname === "/login") {
+  // 公開ページではサイドバー/ヘッダーなしの全画面レイアウト
+  if (PUBLIC_PATHS.includes(pathname)) {
     return <>{children}</>;
   }
 

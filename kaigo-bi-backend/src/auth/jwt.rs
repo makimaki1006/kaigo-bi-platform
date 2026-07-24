@@ -15,10 +15,18 @@ pub struct Claims {
     pub name: String,
     /// ロール（admin, consultant, sales, viewer）
     pub role: String,
+    /// 課金プラン（free, standard, pro, ma）
+    /// 旧トークンにはplanが無いためデフォルト "free" で互換維持
+    #[serde(default = "default_plan")]
+    pub plan: String,
     /// 有効期限（UNIXタイムスタンプ）
     pub exp: usize,
     /// 発行時刻
     pub iat: usize,
+}
+
+fn default_plan() -> String {
+    "free".to_string()
 }
 
 /// JWT秘密鍵を環境変数から取得（未設定時はランダム生成）
@@ -35,6 +43,7 @@ pub fn create_token(
     email: &str,
     name: &str,
     role: &str,
+    plan: &str,
 ) -> Result<String, jsonwebtoken::errors::Error> {
     let now = chrono::Utc::now().timestamp() as usize;
     let expiration = now + 24 * 60 * 60; // 24時間
@@ -44,6 +53,7 @@ pub fn create_token(
         email: email.to_string(),
         name: name.to_string(),
         role: role.to_string(),
+        plan: plan.to_string(),
         exp: expiration,
         iat: now,
     };

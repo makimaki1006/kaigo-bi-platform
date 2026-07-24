@@ -37,6 +37,8 @@ pub struct UpdateUserRequest {
     pub role: Option<String>,
     pub is_active: Option<bool>,
     pub expires_at: Option<String>,
+    /// 課金プラン（free, standard, pro, ma）— adminによる手動設定用
+    pub plan: Option<String>,
 }
 
 /// 監査ログクエリパラメータ
@@ -87,7 +89,7 @@ async fn list_users(
 
     let mut rows = conn
         .query(
-            "SELECT id, email, name, role, is_active, expires_at, created_at, updated_at FROM users ORDER BY created_at DESC",
+            "SELECT id, email, name, role, is_active, expires_at, created_at, updated_at, COALESCE(plan, 'free') FROM users ORDER BY created_at DESC",
             (),
         )
         .await
@@ -115,6 +117,7 @@ async fn list_users(
             "expires_at": row.get::<String>(5).ok(),
             "created_at": row.get::<String>(6).unwrap_or_default(),
             "updated_at": row.get::<String>(7).ok(),
+            "plan": row.get::<String>(8).unwrap_or_else(|_| "free".to_string()),
         }));
     }
 
@@ -375,6 +378,18 @@ async fn update_user(
     if let Some(is_active) = payload.is_active {
         set_clauses.push(format!("is_active = ?{}", param_idx));
         params.push(libsql::Value::Integer(if is_active { 1 } else { 0 }));
+        param_idx += 1;
+    }
+    if let Some(ref plan) = payload.plan {
+        let valid_plans = ["free", "standard", "pro", "ma"];
+        if !valid_plans.contains(&plan.as_str()) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(json!({"error": format!("無効なプランです。有効値: {:?}", valid_plans), "status": 400})),
+            ));
+        }
+        set_clauses.push(format!("plan = ?{}", param_idx));
+        params.push(libsql::Value::Text(plan.clone()));
         param_idx += 1;
     }
     if let Some(ref expires_at) = payload.expires_at {

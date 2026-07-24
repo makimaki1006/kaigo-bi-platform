@@ -109,6 +109,14 @@ const ROLE_BADGE_STYLES: Record<string, string> = {
   viewer: "bg-gray-400/20 text-gray-400",
 };
 
+/** プランバッジの表示名と色（暗い背景向け） */
+const PLAN_BADGE_STYLES: Record<string, { label: string; style: string }> = {
+  free: { label: "フリー", style: "bg-gray-400/20 text-gray-300" },
+  standard: { label: "スタンダード", style: "bg-blue-400/20 text-blue-300" },
+  pro: { label: "プロ", style: "bg-brand-400/20 text-brand-300" },
+  ma: { label: "M&A", style: "bg-purple-400/20 text-purple-300" },
+};
+
 export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
@@ -220,17 +228,29 @@ export default function Sidebar() {
       <div className="border-t border-white/10 px-4 py-3">
         {user ? (
           <div className="flex items-center justify-between">
-            <div className="min-w-0">
+            <Link
+              href="/account"
+              className="min-w-0 block rounded-lg -mx-1 px-1 py-0.5 hover:bg-white/5 transition-colors"
+              title="アカウント設定"
+            >
               <p className="text-sm font-medium text-white truncate">
                 {user.name}
               </p>
-              <span
-                className={`inline-flex items-center px-1.5 py-0.5 rounded text-label-sm mt-0.5
-                  ${ROLE_BADGE_STYLES[user.role] || ROLE_BADGE_STYLES.viewer}`}
-              >
-                {user.role}
+              <span className="inline-flex items-center gap-1 mt-0.5">
+                <span
+                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-label-sm
+                    ${ROLE_BADGE_STYLES[user.role] || ROLE_BADGE_STYLES.viewer}`}
+                >
+                  {user.role}
+                </span>
+                <span
+                  className={`inline-flex items-center px-1.5 py-0.5 rounded text-label-sm
+                    ${(PLAN_BADGE_STYLES[user.plan] || PLAN_BADGE_STYLES.free).style}`}
+                >
+                  {(PLAN_BADGE_STYLES[user.plan] || PLAN_BADGE_STYLES.free).label}
+                </span>
               </span>
-            </div>
+            </Link>
             <button
               onClick={handleLogout}
               className="ml-2 p-1.5 text-indigo-300 hover:text-white hover:bg-white/10 rounded-lg transition-colors flex-shrink-0 focus-ring"

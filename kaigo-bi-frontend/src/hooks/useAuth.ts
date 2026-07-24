@@ -21,6 +21,7 @@ export interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
+  signup: (email: string, password: string, name: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
@@ -98,6 +99,21 @@ export function useAuth(): AuthState {
     setUser(response.user);
   }, []);
 
+  // サインアップ処理（成功時は即ログイン状態になる）
+  const signup = useCallback(
+    async (email: string, password: string, name: string) => {
+      const response = await apiRequest<LoginResponse>("/api/auth/signup", {
+        method: "POST",
+        body: { email, password, name },
+        skipAuth: true,
+      });
+
+      setAuthToken(response.token);
+      setUser(response.user);
+    },
+    []
+  );
+
   // ログアウト処理
   const logout = useCallback(async () => {
     try {
@@ -115,6 +131,7 @@ export function useAuth(): AuthState {
     isLoading,
     isAuthenticated: !!user,
     login,
+    signup,
     logout,
   };
 }

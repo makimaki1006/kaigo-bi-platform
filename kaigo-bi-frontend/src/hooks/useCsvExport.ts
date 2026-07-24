@@ -61,7 +61,15 @@ export function useCsvExport() {
         if (response.status === 401) {
           throw new Error("認証が必要です。再ログインしてください。");
         }
-        throw new Error(`CSVエクスポートに失敗しました (${response.status})`);
+        // プラン制限・クレジット超過などのエラーメッセージを表示
+        let message = `CSVエクスポートに失敗しました (${response.status})`;
+        try {
+          const errorData = await response.json();
+          if (errorData.error) message = errorData.error;
+        } catch {
+          // JSONでない場合はデフォルトメッセージ
+        }
+        throw new Error(message);
       }
 
       // レスポンスをBlobとして取得
