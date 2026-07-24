@@ -130,9 +130,18 @@ export interface User {
   email: string;
   name: string;
   role: "admin" | "consultant" | "sales" | "viewer";
+  /** 課金プラン */
+  plan: "free" | "standard" | "pro" | "ma";
   is_active: boolean;
   expires_at: string | null;
   created_at: string;
+}
+
+/** サインアップリクエスト */
+export interface SignupRequest {
+  email: string;
+  password: string;
+  name: string;
 }
 
 /** ログインリクエスト */
@@ -164,6 +173,7 @@ export interface UserUpdateRequest {
   role?: "admin" | "consultant" | "sales" | "viewer";
   expires_at?: string | null;
   is_active?: boolean;
+  plan?: "free" | "standard" | "pro" | "ma";
 }
 
 /** 操作ログ */

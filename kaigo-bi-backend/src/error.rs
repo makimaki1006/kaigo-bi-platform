@@ -17,6 +17,8 @@ pub enum AppError {
     NotFound(String),
     /// サービス利用不可（外部DB未接続等）
     ServiceUnavailable(String),
+    /// 権限不足（プラン上限・機能制限等）
+    Forbidden(String),
 }
 
 impl std::fmt::Display for AppError {
@@ -25,6 +27,7 @@ impl std::fmt::Display for AppError {
             AppError::Internal(msg) => write!(f, "Internal error: {}", msg),
             AppError::NotFound(msg) => write!(f, "Not found: {}", msg),
             AppError::ServiceUnavailable(msg) => write!(f, "Service unavailable: {}", msg),
+            AppError::Forbidden(msg) => write!(f, "Forbidden: {}", msg),
         }
     }
 }
@@ -35,6 +38,7 @@ impl IntoResponse for AppError {
             AppError::Internal(msg) => (StatusCode::INTERNAL_SERVER_ERROR, msg.clone()),
             AppError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone()),
             AppError::ServiceUnavailable(msg) => (StatusCode::SERVICE_UNAVAILABLE, msg.clone()),
+            AppError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg.clone()),
         };
 
         let body = json!({

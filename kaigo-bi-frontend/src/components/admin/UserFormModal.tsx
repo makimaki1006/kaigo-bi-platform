@@ -21,12 +21,21 @@ const ROLE_OPTIONS: { value: User["role"]; label: string }[] = [
   { value: "viewer", label: "閲覧者 (Viewer)" },
 ];
 
+/** プラン選択肢 */
+const PLAN_OPTIONS: { value: User["plan"]; label: string }[] = [
+  { value: "free", label: "フリー" },
+  { value: "standard", label: "スタンダード" },
+  { value: "pro", label: "プロ" },
+  { value: "ma", label: "M&A" },
+];
+
 /** フォームデータ */
 interface UserFormData {
   email: string;
   name: string;
   password: string;
   role: User["role"];
+  plan: User["plan"];
   expires_at: string;
   is_active: boolean;
 }
@@ -56,6 +65,7 @@ export default function UserFormModal({
     name: "",
     password: "",
     role: "viewer",
+    plan: "free",
     expires_at: "",
     is_active: true,
   });
@@ -72,6 +82,7 @@ export default function UserFormModal({
           name: user.name,
           password: "", // 編集時はパスワード空
           role: user.role,
+          plan: user.plan ?? "free",
           expires_at: user.expires_at
             ? user.expires_at.split("T")[0]
             : "",
@@ -83,6 +94,7 @@ export default function UserFormModal({
           name: "",
           password: "",
           role: "viewer",
+          plan: "free",
           expires_at: "",
           is_active: true,
         });
@@ -288,6 +300,31 @@ export default function UserFormModal({
                   </option>
                 ))}
               </select>
+            </div>
+
+            {/* プラン */}
+            <div>
+              <label htmlFor="uf-plan" className="block text-sm font-medium text-gray-700 mb-1">
+                プラン
+              </label>
+              <select
+                id="uf-plan"
+                value={formData.plan}
+                onChange={(e) => updateField("plan", e.target.value as User["plan"])}
+                disabled={isSubmitting}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm
+                  focus:outline-none focus:ring-2 focus:ring-blue-500
+                  disabled:bg-gray-50 disabled:text-gray-400 transition-colors"
+              >
+                {PLAN_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <p className="mt-1 text-xs text-gray-400">
+                Stripe決済で購入した場合は自動で反映されます。手動設定は請求と連動しません。
+              </p>
             </div>
 
             {/* 有効期限 */}

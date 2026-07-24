@@ -104,6 +104,7 @@ function AdminContent() {
         name: string;
         password: string;
         role: User["role"];
+        plan: User["plan"];
         expires_at: string;
         is_active: boolean;
       },
@@ -113,6 +114,7 @@ function AdminContent() {
         email: data.email,
         name: data.name,
         role: data.role,
+        plan: data.plan,
         is_active: data.is_active,
         expires_at: data.expires_at || null,
         ...(data.password ? { password: data.password } : {}),
