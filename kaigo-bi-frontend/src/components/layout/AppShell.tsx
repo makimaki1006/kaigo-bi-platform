@@ -17,7 +17,7 @@ interface AppShellProps {
 }
 
 /** サイドバー/認証ガードなしで表示する公開ページ */
-const PUBLIC_PATHS = ["/login", "/signup", "/pricing"];
+const PUBLIC_PATHS = ["/login", "/signup", "/pricing", "/forgot-password", "/reset-password"];
 
 export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();

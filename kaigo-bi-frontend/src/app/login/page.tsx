@@ -220,11 +220,16 @@ export default function LoginPage() {
             </button>
           </form>
 
-          {/* サインアップリンク */}
+          {/* サインアップ・リセットリンク */}
           <p className="text-center text-sm text-gray-500 mt-6">
             アカウントをお持ちでない方は{" "}
             <Link href="/signup" className="text-brand-500 hover:text-brand-600 font-medium">
               無料登録
+            </Link>
+          </p>
+          <p className="text-center text-xs text-gray-400 mt-2">
+            <Link href="/forgot-password" className="hover:text-brand-500">
+              パスワードをお忘れですか？
             </Link>
           </p>
         </div>
