@@ -1141,7 +1141,7 @@ pub async fn quality_kpi(db: &Database, params: &FilterParams) -> Result<Value, 
             (SUM(CASE WHEN \"品質_BCP策定\" = 1 THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0)) as bcp_rate,
             (SUM(CASE WHEN \"品質_ICT活用\" = 1 THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0)) as ict_rate,
             (SUM(CASE WHEN \"品質_第三者評価\" = 1 THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0)) as third_party_rate,
-            (SUM(CASE WHEN \"品質_賠償保険\" = 1 THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0)) as insurance_rate
+            (SUM(CASE WHEN \"品質_損害賠償保険\" = 1 THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0)) as insurance_rate
         FROM facilities {}",
         where_clause
     );
@@ -1276,7 +1276,7 @@ pub async fn quality_category_radar(db: &Database, params: &FilterParams) -> Res
             (SUM(CASE WHEN \"品質_BCP策定\" = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as bcp,
             (SUM(CASE WHEN \"品質_ICT活用\" = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as ict,
             (SUM(CASE WHEN \"品質_第三者評価\" = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as third_party,
-            (SUM(CASE WHEN \"品質_賠償保険\" = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as insurance,
+            (SUM(CASE WHEN \"品質_損害賠償保険\" = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as insurance,
             AVG(CASE WHEN fulltime_ratio BETWEEN 0.0 AND 1.0 THEN fulltime_ratio * 100 END) as fulltime,
             (1.0 - AVG(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END)) * 100 as retention
         FROM facilities {}",
@@ -1809,7 +1809,7 @@ pub async fn facility_detail(db: &Database, id: &str) -> Result<Value, AppError>
             \"事業開始日\", \"前年度採用数\", \"前年度退職数\",
             prefecture, corp_type, turnover_rate, fulltime_ratio, years_in_business,
             \"サービスコード\", \"サービス名\",
-            \"会計種別\", \"財務DL_事業活動計算書\", \"財務DL_資金収支計算書\", \"財務DL_貸借対照表\"
+            \"会計種類\", \"財務DL_事業活動計算書\", \"財務DL_資金収支計算書\", \"財務DL_貸借対照表\"
         FROM facilities
         WHERE \"事業所番号\" = ?1
         LIMIT 1";
@@ -2059,8 +2059,8 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
             CAST(COALESCE(NULLIF(\"前年度退職数\", ''), '0') AS REAL) as left_count,
             \"サービス名\", occupancy_rate,
             COALESCE(\"品質_BCP策定\", 0) as bcp,
-            COALESCE(\"品質_賠償保険\", 0) as insurance,
-            \"事業所番号\", \"会計種別\",
+            COALESCE(\"品質_損害賠償保険\", 0) as insurance,
+            \"事業所番号\", \"会計種類\",
             \"財務DL_事業活動計算書\", \"財務DL_資金収支計算書\", \"財務DL_貸借対照表\"
         FROM facilities
         WHERE \"法人番号\" = ?1";

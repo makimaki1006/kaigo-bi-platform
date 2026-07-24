@@ -274,13 +274,13 @@ async fn financial_health(
         prefecture,
         COUNT(*) as cnt,
         AVG(
-            ((COALESCE(\"品質_BCP策定\", 0) + COALESCE(\"品質_ICT活用\", 0) + COALESCE(\"品質_第三者評価\", 0) + COALESCE(\"品質_賠償保険\", 0)) * 25.0) * 0.25
+            ((COALESCE(\"品質_BCP策定\", 0) + COALESCE(\"品質_ICT活用\", 0) + COALESCE(\"品質_第三者評価\", 0) + COALESCE(\"品質_損害賠償保険\", 0)) * 25.0) * 0.25
             + ((1.0 - COALESCE(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate ELSE 0.0 END, 0.0)) * 50.0
                + COALESCE(CASE WHEN fulltime_ratio BETWEEN 0.0 AND 1.0 THEN fulltime_ratio ELSE 0.0 END, 0.0) * 50.0) * 0.25
             + (COALESCE(CAST(kasan_count AS REAL), 0.0) / {kasan} * 100.0) * 0.25
             + (MIN(COALESCE(years_in_business, 0.0) / 20.0, 1.0) * 100.0) * 0.25
         ) as avg_total,
-        AVG((COALESCE(\"品質_BCP策定\", 0) + COALESCE(\"品質_ICT活用\", 0) + COALESCE(\"品質_第三者評価\", 0) + COALESCE(\"品質_賠償保険\", 0)) * 25.0) as avg_quality,
+        AVG((COALESCE(\"品質_BCP策定\", 0) + COALESCE(\"品質_ICT活用\", 0) + COALESCE(\"品質_第三者評価\", 0) + COALESCE(\"品質_損害賠償保険\", 0)) * 25.0) as avg_quality,
         AVG((1.0 - COALESCE(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate ELSE 0.0 END, 0.0)) * 50.0
             + COALESCE(CASE WHEN fulltime_ratio BETWEEN 0.0 AND 1.0 THEN fulltime_ratio ELSE 0.0 END, 0.0) * 50.0) as avg_hr,
         AVG(COALESCE(CAST(kasan_count AS REAL), 0.0) / {kasan} * 100.0) as avg_revenue,

@@ -58,7 +58,7 @@ def main():
 
     for corp_type in CORP_TYPES:
         sql = f"""
-            SELECT "事業所番号", "事業所名", "法人名", "法人番号", corp_type, prefecture, "サービス名", "会計種別",
+            SELECT "事業所番号", "事業所名", "法人名", "法人番号", corp_type, prefecture, "サービス名", "会計種類",
                    "{DOC_COLS['PL']}", "{DOC_COLS['CF']}", "{DOC_COLS['BS']}"
             FROM facilities
             WHERE corp_type = ?
