@@ -37,7 +37,8 @@ export interface ServiceSummary {
   service_code: string;
   service_name: string;
   facility_count: number;
-  total_staff: number;
+  /** kpi_cacheの集計世代によっては欠損する */
+  total_staff?: number;
 }
 
 /** 法人種別別サマリー */

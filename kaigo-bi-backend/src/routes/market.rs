@@ -10,12 +10,17 @@ use crate::models::filters::FilterParams;
 use crate::routes::SharedState;
 use crate::services::sql_aggregator;
 
-/// マーケット分析ルーター
+/// マーケット分析ルーター（スタンダードプラン以上）
 pub fn router() -> Router<SharedState> {
     Router::new()
         .route("/api/market/choropleth", get(get_choropleth))
         .route("/api/market/by-service-bar", get(get_service_bar))
-        .route("/api/market/corp-type-donut", get(get_corp_type_donut))
+}
+
+/// フリープランにも公開するルーター
+/// 法人種別ドーナツはダッシュボード（全国サマリー）が使用するためfreeでも閲覧可
+pub fn free_router() -> Router<SharedState> {
+    Router::new().route("/api/market/corp-type-donut", get(get_corp_type_donut))
 }
 
 /// GET /api/market/choropleth

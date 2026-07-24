@@ -65,6 +65,7 @@ pub fn create_router(state: SharedState) -> Router {
     // フリープランでも閲覧可能なルート（全国サマリーダッシュボード + メタ情報）
     let free_routes = Router::new()
         .merge(dashboard::router())
+        .merge(market::free_router())
         .merge(meta::router())
         .with_state(state.clone());
 

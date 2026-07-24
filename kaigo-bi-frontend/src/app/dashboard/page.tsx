@@ -242,10 +242,10 @@ function DashboardContent() {
                     <tr key={s.service_code} className="border-b border-gray-100 hover:bg-gray-50">
                       <td className="px-3 py-2 text-gray-700">{s.service_name}</td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-900 font-medium">
-                        {s.facility_count.toLocaleString("ja-JP")}
+                        {(s.facility_count ?? 0).toLocaleString("ja-JP")}
                       </td>
                       <td className="px-3 py-2 text-right tabular-nums text-gray-500">
-                        {s.total_staff.toLocaleString("ja-JP")}
+                        {s.total_staff != null ? s.total_staff.toLocaleString("ja-JP") : "-"}
                       </td>
                     </tr>
                   ))}

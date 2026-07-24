@@ -136,7 +136,7 @@ function DataQualityContent() {
       .map((item) => ({
         service_name: formatServiceName(item.service_name),
         facility_count: item.facility_count,
-        total_staff: item.total_staff,
+        total_staff: item.total_staff ?? 0,
       }));
   }, [byService]);
 
