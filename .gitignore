@@ -104,3 +104,4 @@ kaigo-bi-frontend/node_modules/
 kaigo-bi-backend/target/
 kaigo-bi-etl/__pycache__/
 *.parquet
+data/financial_pilot/**/*.pdf
