@@ -41,6 +41,11 @@ services:
       # フロントエンドURL（Checkoutリダイレクト先）
       - key: APP_URL
         sync: false
+      # メール送信（Resend、パスワードリセット用）
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false
       # アプリケーション設定
       - key: KAIGO_PORT
         value: "3001"
