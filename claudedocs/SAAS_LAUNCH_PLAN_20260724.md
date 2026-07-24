@@ -39,10 +39,16 @@
 - ✅ フロント: `/signup` `/pricing` `/account` ページ、サイドバーにプランバッジ、admin画面でプラン手動設定
 - ✅ JWT Claimsにplan追加(旧トークンはserde defaultで"free"互換)
 
+**E2E検証済み(2026-07-24、Stripeテスト環境)**: 16/16パス
+- signup → free制限(dashboard○/market×/export×/M&A×) → 実Stripe Checkout URL生成 → Webhook署名検証(正/不正) → pro昇格(market○/export枠3000行/M&A×) → 解約Webhook → free降格
+- Stripeテスト環境に商品/Price作成済み: standard=`price_1TwaQE7MzV0S3Np5v6skDcb2`(9,800円) / pro=`price_1TwaQE7MzV0S3Np5GEVgjECA`(29,800円) / ma=`price_1TwaQF7MzV0S3Np5whSJfXR7`(49,800円)、全商品に税コード`txcd_10103000`設定済み
+- **知見**: Managed Payments有効のStripeアカウントは商品にtax_code必須(未設定だとCheckout作成502)
+
 残工事:
 - メール確認(現状は即有効化。Resend等の導入は後続)
 - APIレート制限
-- **Stripe側の設定(ユーザー作業)**: アカウント作成 → 商品/Price 3つ作成 → Webhookエンドポイント登録 → 環境変数設定(`.env.example`参照)
+- 本番Webhookエンドポイント登録(Render URL確定後): `https://<render-url>/api/webhooks/stripe` → 発行されたwhsec_をRenderの`STRIPE_WEBHOOK_SECRET`に設定
+- 本番移行時は本番キー(sk_live_)+本番Price作成が必要(現在はテスト環境)
 
 ### Phase 2: リストDL機能(Salesforce_Listノウハウ流用)
 - 検索UI: 都道府県×サービス種別×定員×法人格などの条件ビルダー(バックエンドの`FilterParams`+`/api/export/csv`は実装済み、フロントのリスト作成専用ページを新設)
