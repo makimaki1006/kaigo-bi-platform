@@ -10,6 +10,17 @@ import { useState, useCallback, useEffect, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthContext } from "@/components/auth/AuthProvider";
+import { persistWorkspace } from "@/hooks/useWorkspace";
+import { WORKSPACES, type WorkspaceId } from "@/lib/constants";
+
+/** 利用目的の選択肢（ワークスペースにマッピング） */
+const PURPOSE_OPTIONS: { value: WorkspaceId; label: string }[] = [
+  { value: "bi", label: "介護業界のデータを見たい" },
+  { value: "management", label: "自施設の経営を改善したい（介護事業者）" },
+  { value: "sales", label: "営業先リストを作りたい" },
+  { value: "ma", label: "M&A・事業承継の検討" },
+  { value: "all", label: "その他・全部見たい" },
+];
 
 export default function SignupPage() {
   const router = useRouter();
@@ -20,6 +31,7 @@ export default function SignupPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
+  const [purpose, setPurpose] = useState<WorkspaceId>("all");
   const [error, setError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -50,7 +62,10 @@ export default function SignupPage() {
 
       try {
         await signup(email, password, name);
-        router.push("/dashboard");
+        // 利用目的に応じたワークスペースを保存し、そのホームへ誘導
+        persistWorkspace(purpose);
+        const home = WORKSPACES.find((w) => w.id === purpose)?.home ?? "/dashboard";
+        router.push(home);
       } catch (err) {
         if (err instanceof Error) {
           const msg = err.message;
@@ -66,7 +81,7 @@ export default function SignupPage() {
         setIsSubmitting(false);
       }
     },
-    [name, email, password, passwordConfirm, signup, router]
+    [name, email, password, passwordConfirm, purpose, signup, router]
   );
 
   // 既にログイン済みの場合はダッシュボードにリダイレクト
@@ -215,7 +230,7 @@ export default function SignupPage() {
             </div>
 
             {/* パスワード確認 */}
-            <div className="mb-6">
+            <div className="mb-4">
               <label
                 htmlFor="passwordConfirm"
                 className="block text-sm font-medium text-gray-700 mb-1.5"
@@ -233,6 +248,32 @@ export default function SignupPage() {
                 className={inputClassName}
                 placeholder="もう一度入力"
               />
+            </div>
+
+            {/* 利用目的（初期ワークスペースの選択） */}
+            <div className="mb-6">
+              <label
+                htmlFor="purpose"
+                className="block text-sm font-medium text-gray-700 mb-1.5"
+              >
+                利用目的
+              </label>
+              <select
+                id="purpose"
+                value={purpose}
+                onChange={(e) => setPurpose(e.target.value as WorkspaceId)}
+                disabled={isSubmitting}
+                className={inputClassName}
+              >
+                {PURPOSE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+              <p className="text-[11px] text-gray-400 mt-1">
+                目的に合わせた画面構成で始まります（あとから切替可能）
+              </p>
             </div>
 
             {/* 登録ボタン */}

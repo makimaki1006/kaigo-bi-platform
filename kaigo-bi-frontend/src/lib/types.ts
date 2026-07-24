@@ -553,6 +553,11 @@ export interface MaCandidate {
   prefectures: string[];
   service_names: string[];
   attractiveness_score: number;
+  /** 財務・リスクフラグ（決算PDF抽出データ由来） */
+  has_financials?: boolean;
+  is_insolvent?: boolean;
+  has_operating_loss?: boolean;
+  has_violation?: boolean;
 }
 
 /** M&Aファネル段階（実API） */
@@ -939,6 +944,8 @@ export interface DashboardKpiExtended extends DashboardKpi {
   avg_quality_score: number | null;
   avg_kasan_count: number | null;
   total_corps: number | null;
+  /** 実APIのキー名（avg_years_in_businessではなくavg_yearsで返る） */
+  avg_years?: number | null;
 }
 
 /** 人材分析KPI拡張版 */

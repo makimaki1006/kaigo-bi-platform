@@ -2154,6 +2154,20 @@ fn to_kaigokensaku_url(path: Option<String>) -> Option<String> {
 // ================================================================
 
 /// M&Aスクリーニング
+/// 行政処分・指導の内容が実質的な違反記録かを判定するSQL断片
+/// （is_real_violation のSQL近似版。否定表記を除外する）
+fn sql_real_violation(col: &str) -> String {
+    format!(
+        "(COALESCE(\"{c}\", '') != '' \
+          AND \"{c}\" NOT LIKE '%ありません%' \
+          AND \"{c}\" NOT LIKE '%なし%' \
+          AND \"{c}\" NOT LIKE '%無し%' \
+          AND TRIM(\"{c}\") NOT IN ('無', 'ない', '無い'))",
+        c = col
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
 pub async fn ma_screening(
     db: &Database,
     params: &FilterParams,
@@ -2163,6 +2177,10 @@ pub async fn ma_screening(
     staff_max: Option<f64>,
     turnover_min: Option<f64>,
     turnover_max: Option<f64>,
+    only_with_financials: bool,
+    only_insolvent: bool,
+    only_operating_loss: bool,
+    only_with_violations: bool,
     limit: usize,
 ) -> Result<Value, AppError> {
     let mut w = WhereBuilder::from_filter_params(params);
@@ -2206,6 +2224,20 @@ pub async fn ma_screening(
         having_conditions.push(format!("avg_turnover <= ?{}", extra_counter));
     }
 
+    // 財務フィルタ（financialsテーブン由来のフラグ列に対するHAVING）
+    if only_with_financials {
+        having_conditions.push("has_financials = 1".to_string());
+    }
+    if only_insolvent {
+        having_conditions.push("is_insolvent = 1".to_string());
+    }
+    if only_operating_loss {
+        having_conditions.push("has_operating_loss = 1".to_string());
+    }
+    if only_with_violations {
+        having_conditions.push("has_violation = 1".to_string());
+    }
+
     extra_counter += 1;
     extra_params.push(libsql::Value::Integer(limit as i64));
     let limit_idx = extra_counter;
@@ -2215,6 +2247,12 @@ pub async fn ma_screening(
     } else {
         format!("HAVING {}", having_conditions.join(" AND "))
     };
+
+    let violation_expr = format!(
+        "MAX(CASE WHEN {} OR {} THEN 1 ELSE 0 END)",
+        sql_real_violation("行政処分内容"),
+        sql_real_violation("行政指導内容"),
+    );
 
     let sql = format!(
         "SELECT
@@ -2226,13 +2264,17 @@ pub async fn ma_screening(
             AVG(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END) as avg_turnover,
             AVG(CAST(COALESCE(NULLIF(\"定員\", ''), '0') AS REAL)) as avg_capacity,
             GROUP_CONCAT(DISTINCT prefecture) as prefectures,
-            GROUP_CONCAT(DISTINCT \"サービス名\") as service_names
+            GROUP_CONCAT(DISTINCT \"サービス名\") as service_names,
+            MAX(CASE WHEN EXISTS (SELECT 1 FROM financials fin WHERE fin.corp_number = facilities.\"法人番号\") THEN 1 ELSE 0 END) as has_financials,
+            MAX(CASE WHEN EXISTS (SELECT 1 FROM financials fin WHERE fin.corp_number = facilities.\"法人番号\" AND fin.doc_type = 'BS' AND fin.net_assets < 0) THEN 1 ELSE 0 END) as is_insolvent,
+            MAX(CASE WHEN EXISTS (SELECT 1 FROM financials fin WHERE fin.corp_number = facilities.\"法人番号\" AND fin.doc_type = 'PL' AND fin.operating_income < 0) THEN 1 ELSE 0 END) as has_operating_loss,
+            {} as has_violation
         FROM facilities {}
         GROUP BY \"法人番号\", \"法人名\"
         {}
         ORDER BY facility_count DESC, total_staff DESC
         LIMIT ?{}",
-        where_clause, having, limit_idx
+        violation_expr, where_clause, having, limit_idx
     );
 
     let mut all_params = w.into_params();
@@ -2261,6 +2303,10 @@ pub async fn ma_screening(
             "prefectures": prefs_str.split(',').filter(|s| !s.is_empty()).collect::<Vec<&str>>(),
             "service_names": svcs_str.split(',').filter(|s| !s.is_empty()).collect::<Vec<&str>>(),
             "attractiveness_score": score,
+            "has_financials": row_i64(row, 9) == 1,
+            "is_insolvent": row_i64(row, 10) == 1,
+            "has_operating_loss": row_i64(row, 11) == 1,
+            "has_violation": row_i64(row, 12) == 1,
         })
     }).collect();
 

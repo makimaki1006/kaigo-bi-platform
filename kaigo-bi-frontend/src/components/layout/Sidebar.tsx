@@ -8,7 +8,8 @@
 import { useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { NAV_ITEMS, PLAN_LEVELS, PLAN_NAMES } from "@/lib/constants";
+import { NAV_ITEMS, PLAN_LEVELS, PLAN_NAMES, WORKSPACES, type WorkspaceId } from "@/lib/constants";
+import { useWorkspace } from "@/hooks/useWorkspace";
 import { useAuthContext } from "@/components/auth/AuthProvider";
 
 /** ナビアイテムに対応するSVGアイコンマップ */
@@ -121,15 +122,28 @@ export default function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, logout } = useAuthContext();
+  const { workspace, workspaceId, setWorkspace } = useWorkspace();
 
   const isAdmin = user?.role === "admin";
   // adminは全プランゲートをバイパス（バックエンドと同じルール）
   const userPlanLevel = isAdmin ? 99 : (PLAN_LEVELS[user?.plan ?? "free"] ?? 0);
 
-  // adminOnly項目を除外してからグループごとに分類
-  const groups = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin).reduce<
-    Record<string, typeof NAV_ITEMS>
-  >((acc, item) => {
+  // ワークスペース切替: 選択したワークスペースのホームへ移動
+  const handleWorkspaceChange = useCallback(
+    (id: WorkspaceId) => {
+      setWorkspace(id);
+      const ws = WORKSPACES.find((w) => w.id === id);
+      if (ws) router.push(ws.home);
+    },
+    [setWorkspace, router]
+  );
+
+  // adminOnly項目とワークスペース外グループを除外してから分類
+  // （「運用」グループはadminなら常に表示）
+  const groups = NAV_ITEMS.filter((item) => {
+    if (item.adminOnly) return isAdmin;
+    return workspace.groups.includes(item.group ?? "");
+  }).reduce<Record<string, typeof NAV_ITEMS>>((acc, item) => {
     const group = item.group || "Other";
     if (!acc[group]) acc[group] = [];
     acc[group].push(item);
@@ -211,6 +225,24 @@ export default function Sidebar() {
         <p className="text-label-sm text-indigo-300 mt-1">
           Strategic Consulting Platform
         </p>
+
+        {/* ワークスペース切替 */}
+        <select
+          value={workspaceId}
+          onChange={(e) => handleWorkspaceChange(e.target.value as WorkspaceId)}
+          suppressHydrationWarning
+          className="mt-3 w-full px-2.5 py-1.5 text-xs font-medium rounded-lg
+            bg-white/10 text-white border border-white/20
+            focus:outline-none focus:ring-2 focus:ring-brand-400 cursor-pointer
+            [&>option]:text-gray-900"
+          aria-label="ワークスペース切替"
+        >
+          {WORKSPACES.map((ws) => (
+            <option key={ws.id} value={ws.id}>
+              {ws.label}
+            </option>
+          ))}
+        </select>
       </div>
 
       {/* ナビゲーション */}

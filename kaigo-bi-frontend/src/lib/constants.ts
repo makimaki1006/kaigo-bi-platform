@@ -137,6 +137,29 @@ export interface NavItem {
   adminOnly?: boolean;
 }
 
+/** ワークスペース定義（ペルソナ切替） */
+export type WorkspaceId = "all" | "bi" | "management" | "sales" | "ma";
+
+export interface Workspace {
+  id: WorkspaceId;
+  label: string;
+  /** 表示するナビグループ（「市場を知る」は全ワークスペース共通） */
+  groups: string[];
+  /** ワークスペースのホームパス */
+  home: string;
+}
+
+export const WORKSPACES: Workspace[] = [
+  { id: "all", label: "すべての機能", groups: ["市場を知る", "経営分析", "リスト作成", "M&A"], home: "/dashboard" },
+  { id: "bi", label: "業界データを見る", groups: ["市場を知る"], home: "/dashboard" },
+  { id: "management", label: "経営支援", groups: ["市場を知る", "経営分析"], home: "/home/management" },
+  { id: "sales", label: "営業支援", groups: ["市場を知る", "リスト作成"], home: "/home/sales" },
+  { id: "ma", label: "M&A", groups: ["市場を知る", "M&A"], home: "/home/ma" },
+];
+
+/** ワークスペース保存用localStorageキー */
+export const WORKSPACE_STORAGE_KEY = "kaigo_bi_workspace";
+
 /**
  * ナビゲーション（ターゲット別グルーピング）
  * minPlanはバックエンドのルートゲート（routes/mod.rs）と一致させること
@@ -148,6 +171,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "トレンド分析", href: "/trends", group: "市場を知る", minPlan: "standard" },
   { label: "データインサイト", href: "/insights", group: "市場を知る", minPlan: "standard" },
   // 経営分析（介護事業者向け）
+  { label: "経営ホーム", href: "/home/management", group: "経営分析", minPlan: "standard" },
   { label: "人材分析", href: "/workforce", group: "経営分析", minPlan: "standard" },
   { label: "採用天気予報", href: "/hiring-weather", group: "経営分析", minPlan: "standard" },
   { label: "収益構造", href: "/revenue", group: "経営分析", minPlan: "standard" },
@@ -156,9 +180,11 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "ベンチマーク", href: "/benchmark", group: "経営分析", minPlan: "standard" },
   { label: "コスト推定", href: "/cost-estimation", group: "経営分析", minPlan: "standard" },
   // リスト作成（営業企業向け）
+  { label: "営業ホーム", href: "/home/sales", group: "リスト作成", minPlan: "standard" },
   { label: "施設マスタ", href: "/facilities", group: "リスト作成", minPlan: "standard" },
   { label: "リスト生成", href: "/list-export", group: "リスト作成", minPlan: "pro" },
   // M&A
+  { label: "M&Aホーム", href: "/home/ma", group: "M&A", minPlan: "ma" },
   { label: "法人グループ", href: "/corp-group", group: "M&A", minPlan: "standard" },
   { label: "法人比較", href: "/corp-compare", group: "M&A", minPlan: "standard" },
   { label: "成長性分析", href: "/growth", group: "M&A", minPlan: "standard" },

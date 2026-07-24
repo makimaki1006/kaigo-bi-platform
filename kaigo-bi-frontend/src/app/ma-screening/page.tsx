@@ -34,6 +34,11 @@ interface ScreeningFilters {
   turnoverMax: number | null;
   facilityCountMin: number | null;
   facilityCountMax: number | null;
+  /** 財務フィルタ（決算PDF抽出データ由来） */
+  withFinancials: boolean;
+  insolvent: boolean;
+  operatingLoss: boolean;
+  withViolations: boolean;
 }
 
 const DEFAULT_SCREENING_FILTERS: ScreeningFilters = {
@@ -46,7 +51,39 @@ const DEFAULT_SCREENING_FILTERS: ScreeningFilters = {
   turnoverMax: null,
   facilityCountMin: null,
   facilityCountMax: null,
+  withFinancials: false,
+  insolvent: false,
+  operatingLoss: false,
+  withViolations: false,
 };
+
+/** 財務・リスクバッジ */
+function RiskBadges({ row }: { row: MaCandidate }) {
+  return (
+    <span className="inline-flex gap-1 ml-1.5 align-middle">
+      {row.has_financials && (
+        <span className="px-1 py-0.5 rounded text-[9px] font-semibold bg-indigo-50 text-indigo-600 border border-indigo-200" title="決算データあり">
+          財務
+        </span>
+      )}
+      {row.is_insolvent && (
+        <span className="px-1 py-0.5 rounded text-[9px] font-semibold bg-red-50 text-red-600 border border-red-200" title="債務超過（純資産マイナス）">
+          債務超過
+        </span>
+      )}
+      {row.has_operating_loss && !row.is_insolvent && (
+        <span className="px-1 py-0.5 rounded text-[9px] font-semibold bg-amber-50 text-amber-700 border border-amber-200" title="営業赤字">
+          赤字
+        </span>
+      )}
+      {row.has_violation && (
+        <span className="px-1 py-0.5 rounded text-[9px] font-semibold bg-red-50 text-red-500 border border-red-200" title="行政処分・指導歴あり">
+          処分歴
+        </span>
+      )}
+    </span>
+  );
+}
 
 /** ターゲットリストのカラム定義（実APIのMaCandidateに対応） */
 const TARGET_COLUMNS: ColumnDef<MaCandidate>[] = [
@@ -54,9 +91,18 @@ const TARGET_COLUMNS: ColumnDef<MaCandidate>[] = [
     key: "corp_name",
     label: "法人名",
     sortable: true,
-    width: "200px",
-    render: (value: string) => (
-      <span className="font-medium text-gray-900">{value}</span>
+    width: "230px",
+    render: (value: string, row: MaCandidate) => (
+      <span className="font-medium text-gray-900">
+        {row.corp_number ? (
+          <a href={`/corp?number=${row.corp_number}`} className="hover:text-brand-600 hover:underline">
+            {value}
+          </a>
+        ) : (
+          value
+        )}
+        <RiskBadges row={row} />
+      </span>
     ),
   },
   {
@@ -233,6 +279,11 @@ function MaScreeningContent() {
     if (screeningFilters.turnoverMax != null) {
       params.turnover_max = screeningFilters.turnoverMax;
     }
+    // 財務フィルタ
+    if (screeningFilters.withFinancials) params.with_financials = "true";
+    if (screeningFilters.insolvent) params.insolvent = "true";
+    if (screeningFilters.operatingLoss) params.operating_loss = "true";
+    if (screeningFilters.withViolations) params.with_violations = "true";
     return params;
   }, [screeningFilters]);
 
@@ -343,6 +394,37 @@ function MaScreeningContent() {
                 minPlaceholder="下限"
                 maxPlaceholder="上限"
               />
+
+              {/* 財務フィルタ（決算PDF抽出データ） */}
+              <div className="border-t border-gray-200 pt-3">
+                <label className="block text-xs font-medium text-gray-600 mb-2">
+                  財務・リスク条件
+                  <span className="ml-1 text-[9px] font-normal text-indigo-500 bg-indigo-50 border border-indigo-200 rounded px-1 py-0.5">
+                    決算PDF AI抽出
+                  </span>
+                </label>
+                <div className="space-y-1.5">
+                  {([
+                    ["withFinancials", "財務データあり法人のみ"],
+                    ["insolvent", "債務超過のみ（純資産マイナス）"],
+                    ["operatingLoss", "営業赤字のみ"],
+                    ["withViolations", "行政処分・指導歴あり"],
+                  ] as const).map(([key, label]) => (
+                    <label key={key} className="flex items-center gap-2 text-xs text-gray-700 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={screeningFilters[key]}
+                        onChange={(e) => updateFilter({ [key]: e.target.checked })}
+                        className="rounded border-gray-300 text-brand-500 focus:ring-brand-500"
+                      />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+                <p className="text-[10px] text-gray-400 mt-1.5">
+                  対象は決算データ取得済み法人（順次拡大中）
+                </p>
+              </div>
 
               {/* 稼働率・品質スコア（プレースホルダー） */}
               <div className="border-t border-gray-200 pt-3">

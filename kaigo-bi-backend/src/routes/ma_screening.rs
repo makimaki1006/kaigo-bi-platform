@@ -34,6 +34,14 @@ pub struct MaScreeningParams {
     pub turnover_min: Option<f64>,
     /// 離職率上限
     pub turnover_max: Option<f64>,
+    /// 財務データあり法人のみ
+    pub with_financials: Option<bool>,
+    /// 債務超過法人のみ（BSの純資産<0）
+    pub insolvent: Option<bool>,
+    /// 営業赤字法人のみ（PLの営業損益<0）
+    pub operating_loss: Option<bool>,
+    /// 行政処分・指導歴あり法人のみ
+    pub with_violations: Option<bool>,
     /// 取得件数（デフォルト: 50）
     pub limit: Option<usize>,
 }
@@ -54,6 +62,10 @@ async fn get_ma_screening(
         params.staff_max,
         params.turnover_min,
         params.turnover_max,
+        params.with_financials.unwrap_or(false),
+        params.insolvent.unwrap_or(false),
+        params.operating_loss.unwrap_or(false),
+        params.with_violations.unwrap_or(false),
         limit,
     ).await?;
     Ok(Json(result))
