@@ -1831,7 +1831,24 @@ pub async fn facility_detail(db: &Database, id: &str) -> Result<Value, AppError>
             \"事業開始日\", \"前年度採用数\", \"前年度退職数\",
             prefecture, corp_type, turnover_rate, fulltime_ratio, years_in_business,
             \"サービスコード\", \"サービス名\",
-            \"会計種類\", \"財務DL_事業活動計算書\", \"財務DL_資金収支計算書\", \"財務DL_貸借対照表\"
+            \"会計種類\", \"財務DL_事業活動計算書\", \"財務DL_資金収支計算書\", \"財務DL_貸借対照表\",
+            \"要介護1\", \"要介護2\", \"要介護3\", \"要介護4\", \"要介護5\",
+            \"利用者総数\", \"利用者_都道府県平均\", \"経験10年以上割合\",
+            \"介護職員_常勤\", \"介護職員_非常勤\", \"介護職員_合計\",
+            \"看護職員_常勤\", \"看護職員_非常勤\", \"看護職員_合計\",
+            \"生活相談員_常勤\", \"生活相談員_非常勤\", \"生活相談員_合計\",
+            \"機能訓練指導員_常勤\", \"機能訓練指導員_非常勤\", \"機能訓練指導員_合計\",
+            \"管理栄養士_常勤\", \"管理栄養士_非常勤\", \"管理栄養士_合計\",
+            \"事務員_常勤\", \"事務員_非常勤\", \"事務員_合計\",
+            \"介護福祉士数\", \"実務者研修数\", \"初任者研修数\", \"介護支援専門員数\",
+            \"夜勤人数\", \"宿直人数\",
+            \"品質_BCP策定\", \"品質_ICT活用\", \"品質_第三者評価\", \"品質_損害賠償保険\",
+            quality_score, quality_rank, kasan_count, occupancy_rate,
+            \"加算_処遇改善I\", \"加算_処遇改善II\", \"加算_処遇改善III\", \"加算_処遇改善IV\",
+            \"加算_特定事業所I\", \"加算_特定事業所II\", \"加算_特定事業所III\", \"加算_特定事業所IV\", \"加算_特定事業所V\",
+            \"加算_認知症ケアI\", \"加算_認知症ケアII\", \"加算_口腔連携\", \"加算_緊急時\",
+            \"行政処分日\", \"行政処分内容\", \"行政指導日\", \"行政指導内容\",
+            \"スクレイピング日\"
         FROM facilities
         WHERE \"事業所番号\" = ?1
         LIMIT 1";
@@ -1846,8 +1863,23 @@ pub async fn facility_detail(db: &Database, id: &str) -> Result<Value, AppError>
     // 抽出済み財務データ（あれば）
     let financials = fetch_financials(&conn, "jigyosho_number", id).await;
 
+    // クロス指標（財務 × 公表データ）
+    // 「なし」等の否定表記は違反扱いしない
+    let sanction_detail = row_str_opt(row, 84).filter(|_| is_real_violation(&row_str_opt(row, 84)));
+    let guidance_detail = row_str_opt(row, 86).filter(|_| is_real_violation(&row_str_opt(row, 86)));
+    let has_violation = sanction_detail.is_some() || guidance_detail.is_some();
+    let cross_metrics = build_cross_metrics(
+        &financials,
+        row_f64_opt(row, 14),  // 従業者_合計
+        row_f64_opt(row, 35),  // 利用者総数
+        row_f64_opt(row, 21),  // turnover_rate
+        row_f64_opt(row, 69),  // occupancy_rate
+        has_violation,
+    );
+
     Ok(json!({
         "financials": financials,
+        "cross_metrics": cross_metrics,
         "facility": {
             "jigyosho_number": row_str(row, 0),
             "jigyosho_name": row_str(row, 1),
@@ -1879,6 +1911,63 @@ pub async fn facility_detail(db: &Database, id: &str) -> Result<Value, AppError>
             "financial_statement_url_pl": to_kaigokensaku_url(row_str_opt(row, 27)),
             "financial_statement_url_cf": to_kaigokensaku_url(row_str_opt(row, 28)),
             "financial_statement_url_bs": to_kaigokensaku_url(row_str_opt(row, 29)),
+            // 要介護度・利用者（FacilityRowExtended準拠キー）
+            "care_level_1": row_f64_opt(row, 30),
+            "care_level_2": row_f64_opt(row, 31),
+            "care_level_3": row_f64_opt(row, 32),
+            "care_level_4": row_f64_opt(row, 33),
+            "care_level_5": row_f64_opt(row, 34),
+            "total_users": row_f64_opt(row, 35),
+            "users_pref_avg": row_f64_opt(row, 36),
+            "experienced_10yr_ratio": row_f64_opt(row, 37),
+            // 職種別人員体制
+            "staffing": {
+                "kaigo": {"fulltime": row_f64_opt(row, 38), "parttime": row_f64_opt(row, 39), "total": row_f64_opt(row, 40)},
+                "nurse": {"fulltime": row_f64_opt(row, 41), "parttime": row_f64_opt(row, 42), "total": row_f64_opt(row, 43)},
+                "counselor": {"fulltime": row_f64_opt(row, 44), "parttime": row_f64_opt(row, 45), "total": row_f64_opt(row, 46)},
+                "trainer": {"fulltime": row_f64_opt(row, 47), "parttime": row_f64_opt(row, 48), "total": row_f64_opt(row, 49)},
+                "dietitian": {"fulltime": row_f64_opt(row, 50), "parttime": row_f64_opt(row, 51), "total": row_f64_opt(row, 52)},
+                "clerk": {"fulltime": row_f64_opt(row, 53), "parttime": row_f64_opt(row, 54), "total": row_f64_opt(row, 55)},
+            },
+            // 資格・夜間体制
+            "qualifications": {
+                "care_worker": row_f64_opt(row, 56),
+                "jitsumusha": row_f64_opt(row, 57),
+                "shoninsha": row_f64_opt(row, 58),
+                "care_manager": row_f64_opt(row, 59),
+            },
+            "night_shift_count": row_f64_opt(row, 60),
+            "night_watch_count": row_f64_opt(row, 61),
+            // 品質（0/1正規化済みフラグ）
+            "has_bcp": row_i64(row, 62) == 1,
+            "has_ict": row_i64(row, 63) == 1,
+            "has_third_party_eval": row_i64(row, 64) == 1,
+            "has_liability_insurance": row_i64(row, 65) == 1,
+            "quality_score": row_f64_opt(row, 66),
+            "quality_rank": row_str_opt(row, 67),
+            "addition_count": row_f64_opt(row, 68),
+            "occupancy_rate": row_f64_opt(row, 69),
+            // 加算フラグ（FacilityRowExtended準拠キー）
+            "addition_treatment_i": row_i64(row, 70) == 1,
+            "addition_treatment_ii": row_i64(row, 71) == 1,
+            "addition_treatment_iii": row_i64(row, 72) == 1,
+            "addition_treatment_iv": row_i64(row, 73) == 1,
+            "addition_specific_i": row_i64(row, 74) == 1,
+            "addition_specific_ii": row_i64(row, 75) == 1,
+            "addition_specific_iii": row_i64(row, 76) == 1,
+            "addition_specific_iv": row_i64(row, 77) == 1,
+            "addition_specific_v": row_i64(row, 78) == 1,
+            "addition_dementia_i": row_i64(row, 79) == 1,
+            "addition_dementia_ii": row_i64(row, 80) == 1,
+            "addition_oral": row_i64(row, 81) == 1,
+            "addition_emergency": row_i64(row, 82) == 1,
+            // 行政処分・指導（M&A DDリスク、「なし」系表記は除外済み）
+            "sanction_date": row_str_opt(row, 83).filter(|_| sanction_detail.is_some()),
+            "sanction_detail": sanction_detail,
+            "guidance_date": row_str_opt(row, 85).filter(|_| guidance_detail.is_some()),
+            "guidance_detail": guidance_detail,
+            // データ鮮度
+            "scraped_at": row_str_opt(row, 87),
         }
     }))
 }
@@ -1920,6 +2009,129 @@ async fn fetch_financials(conn: &libsql::Connection, key_col: &str, key: &str) -
             })
         })
         .collect()
+}
+
+/// 行政処分・指導の記載が「実質的な違反記録」かを判定する
+/// 公表データには「なし」「無し」「特になし」「該当なし」「ありません」等の
+/// 否定表記が大量に含まれるため、それらを違反扱いから除外する
+fn is_real_violation(text: &Option<String>) -> bool {
+    let Some(t) = text else { return false };
+    let cleaned: String = t
+        .trim()
+        .trim_end_matches(['。', '.', '、', ','])
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect();
+    if cleaned.is_empty() {
+        return false;
+    }
+    // 完全一致の否定表記
+    const NONE_VALUES: [&str; 12] = [
+        "なし", "無し", "無", "ない", "無い",
+        "特になし", "特に無し", "特にない",
+        "該当なし", "該当無し",
+        "ありません", "特にありません",
+    ];
+    if NONE_VALUES.contains(&cleaned.as_str()) {
+        return false;
+    }
+    // 長文の否定表記（例:「処分や指導に関する情報はありません」「該当事項なし」）
+    // 否定語で文が終わるものは違反記録ではないとみなす
+    for suffix in ["ありません", "なし", "無し", "ない", "無い", "無"] {
+        if cleaned.ends_with(suffix) {
+            return false;
+        }
+    }
+    true
+}
+
+/// 決算PDF由来financials × 公表データのクロス指標を計算する
+/// PL/BSが無い場合は has_financials: false のみ返す（財務スケール化に伴い自動で充実）
+fn build_cross_metrics(
+    financials: &[Value],
+    staff_total: Option<f64>,
+    total_users: Option<f64>,
+    turnover_rate: Option<f64>,
+    occupancy_rate: Option<f64>,
+    has_violation: bool,
+) -> Value {
+    let pl = financials.iter().find(|f| f["doc_type"] == "PL");
+    let bs = financials.iter().find(|f| f["doc_type"] == "BS");
+
+    let revenue = pl.and_then(|p| p["revenue"].as_f64());
+    let personnel_cost = pl.and_then(|p| p["personnel_cost"].as_f64());
+    let operating_income = pl.and_then(|p| p["operating_income"].as_f64());
+    let net_assets = bs.and_then(|b| b["net_assets"].as_f64());
+    let total_assets = bs.and_then(|b| b["total_assets"].as_f64());
+
+    // クロス指標①: 労働生産性（従業者1人あたり売上）
+    let labor_productivity = match (revenue, staff_total) {
+        (Some(r), Some(s)) if s > 0.0 => Some(r / s),
+        _ => None,
+    };
+    // クロス指標③: 利用者1人あたり収益
+    let revenue_per_user = match (revenue, total_users) {
+        (Some(r), Some(u)) if u > 0.0 => Some(r / u),
+        _ => None,
+    };
+    // クロス指標②: 実人件費率（PDF実額ベース）
+    let personnel_cost_ratio = match (personnel_cost, revenue) {
+        (Some(p), Some(r)) if r > 0.0 => Some(p / r),
+        _ => None,
+    };
+    // 営業利益率
+    let operating_margin = match (operating_income, revenue) {
+        (Some(o), Some(r)) if r > 0.0 => Some(o / r),
+        _ => None,
+    };
+    // 自己資本比率
+    let equity_ratio = match (net_assets, total_assets) {
+        (Some(n), Some(t)) if t > 0.0 => Some(n / t),
+        _ => None,
+    };
+
+    // クロス指標④⑥: 経営危険度スコア（0-100、高いほど危険 = M&Aでは売却期待度）
+    let mut risk_score = 0i64;
+    let mut risk_factors: Vec<String> = Vec::new();
+    if let Some(n) = net_assets {
+        if n < 0.0 {
+            risk_score += 40;
+            risk_factors.push("債務超過".to_string());
+        }
+    }
+    if let Some(o) = operating_income {
+        if o < 0.0 {
+            risk_score += 20;
+            risk_factors.push("営業赤字".to_string());
+        }
+    }
+    if let Some(t) = turnover_rate {
+        if t > 0.25 {
+            risk_score += 15;
+            risk_factors.push(format!("高離職率 {:.0}%", t * 100.0));
+        }
+    }
+    if has_violation {
+        risk_score += 15;
+        risk_factors.push("行政処分・指導歴".to_string());
+    }
+    if let Some(o) = occupancy_rate {
+        if o < 0.5 {
+            risk_score += 10;
+            risk_factors.push(format!("低稼働率 {:.0}%", o * 100.0));
+        }
+    }
+
+    json!({
+        "has_financials": pl.is_some() || bs.is_some(),
+        "labor_productivity": labor_productivity,
+        "revenue_per_user": revenue_per_user,
+        "personnel_cost_ratio": personnel_cost_ratio,
+        "operating_margin": operating_margin,
+        "equity_ratio": equity_ratio,
+        "risk_score": risk_score,
+        "risk_factors": risk_factors,
+    })
 }
 
 /// 財務DL列の相対パスを介護情報公表システムの絶対URLに変換する
@@ -2127,7 +2339,9 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
             COALESCE(\"品質_BCP策定\", 0) as bcp,
             COALESCE(\"品質_損害賠償保険\", 0) as insurance,
             \"事業所番号\", \"会計種類\",
-            \"財務DL_事業活動計算書\", \"財務DL_資金収支計算書\", \"財務DL_貸借対照表\"
+            \"財務DL_事業活動計算書\", \"財務DL_資金収支計算書\", \"財務DL_貸借対照表\",
+            \"行政処分日\", \"行政処分内容\", \"行政指導日\", \"行政指導内容\",
+            \"介護職員_合計\", \"看護職員_合計\", \"介護福祉士数\", \"介護支援専門員数\"
         FROM facilities
         WHERE \"法人番号\" = ?1";
 
@@ -2159,6 +2373,13 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
     // 施設ごとの財務諸表リンク（PL/CF/BSのいずれかがある施設のみ）
     let mut financial_links = Vec::new();
     let mut accounting_type: Option<String> = None;
+
+    // 行政処分・指導（コンプライアンスDDの実データ）と法人人員集計
+    let mut violations = Vec::new();
+    let mut total_kaigo_staff = 0.0f64;
+    let mut total_nurse_staff = 0.0f64;
+    let mut total_care_workers = 0.0f64;
+    let mut total_care_managers = 0.0f64;
 
     for row in &rows {
         facilities.push(row_str(row, 0));
@@ -2196,6 +2417,26 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
                 "bs_url": bs,
             }));
         }
+
+        // 行政処分・指導の収集（「なし」等の否定表記は除外）
+        let sanction_detail = row_str_opt(row, 21).filter(|_| is_real_violation(&row_str_opt(row, 21)));
+        let guidance_detail = row_str_opt(row, 23).filter(|_| is_real_violation(&row_str_opt(row, 23)));
+        if sanction_detail.is_some() || guidance_detail.is_some() {
+            violations.push(json!({
+                "facility_name": row_str(row, 0),
+                "jigyosho_number": row_str_opt(row, 15),
+                "sanction_date": row_str_opt(row, 20),
+                "sanction_detail": sanction_detail,
+                "guidance_date": row_str_opt(row, 22),
+                "guidance_detail": guidance_detail,
+            }));
+        }
+
+        // 法人人員集計
+        total_kaigo_staff += row_f64(row, 24);
+        total_nurse_staff += row_f64(row, 25);
+        total_care_workers += row_f64(row, 26);
+        total_care_managers += row_f64(row, 27);
     }
 
     let avg_turnover = if turnover_count > 0 { Some(turnover_sum / turnover_count as f64) } else { None };
@@ -2242,6 +2483,44 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
             risk_flags.push(json!({"level": "yellow", "category": "人材", "detail": format!("離職率がやや高い: {:.1}%", t * 100.0)}));
         }
     }
+    if !violations.is_empty() {
+        risk_flags.push(json!({
+            "level": "red",
+            "category": "コンプライアンス",
+            "detail": format!("行政処分・指導の記録が{}施設に存在", violations.len()),
+        }));
+    }
+
+    // 法人レベルのクロス指標: 抽出済み財務のうち代表レコード
+    // （売上最大のPL・総資産最大のBS = 法人全体決算である可能性が最も高いもの）を採用
+    let extracted_financials = fetch_financials(&conn, "corp_number", corp_number).await;
+    let best_pl = extracted_financials
+        .iter()
+        .filter(|f| f["doc_type"] == "PL")
+        .max_by(|a, b| {
+            a["revenue"].as_f64().unwrap_or(0.0)
+                .partial_cmp(&b["revenue"].as_f64().unwrap_or(0.0))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .cloned();
+    let best_bs = extracted_financials
+        .iter()
+        .filter(|f| f["doc_type"] == "BS")
+        .max_by(|a, b| {
+            a["total_assets"].as_f64().unwrap_or(0.0)
+                .partial_cmp(&b["total_assets"].as_f64().unwrap_or(0.0))
+                .unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .cloned();
+    let representative: Vec<Value> = best_pl.into_iter().chain(best_bs).collect();
+    let corp_cross_metrics = build_cross_metrics(
+        &representative,
+        Some(total_staff).filter(|s| *s > 0.0),
+        None,
+        avg_turnover,
+        avg_occupancy,
+        !violations.is_empty(),
+    );
 
     Ok(json!({
         "corp_info": {
@@ -2263,17 +2542,23 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
             "avg_fulltime_ratio": avg_fulltime,
             "total_hired": total_hired,
             "total_left": total_left,
+            "total_kaigo_staff": total_kaigo_staff,
+            "total_nurse_staff": total_nurse_staff,
+            "total_care_workers": total_care_workers,
+            "total_care_managers": total_care_managers,
         },
         "compliance_dd": {
-            "has_violations": false,
+            "has_violations": !violations.is_empty(),
+            "violations": violations,
             "bcp_rate": bcp_rate,
             "insurance_rate": insurance_rate,
         },
         "financial_dd": {
             "accounting_type": accounting_type,
             "financial_links": financial_links,
-            "extracted_financials": fetch_financials(&conn, "corp_number", corp_number).await,
+            "extracted_financials": extracted_financials,
         },
+        "cross_metrics": corp_cross_metrics,
         "risk_flags": risk_flags,
         "benchmark": benchmark,
         "kasan_summary": {

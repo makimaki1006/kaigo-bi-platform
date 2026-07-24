@@ -600,11 +600,18 @@ export interface DdHrDd {
   avg_fulltime_ratio: number | null;
   total_hired: number;
   total_left: number;
+  /** 法人合計の職種別人員（施設360°で追加） */
+  total_kaigo_staff?: number;
+  total_nurse_staff?: number;
+  total_care_workers?: number;
+  total_care_managers?: number;
 }
 
 /** DDコンプライアンス（実API） */
 export interface DdComplianceDd {
   has_violations: boolean;
+  /** 行政処分・指導の実レコード（「なし」系表記は除外済み） */
+  violations?: DdViolation[];
   bcp_rate: number | null;
   insurance_rate: number | null;
 }
@@ -648,6 +655,44 @@ export interface DdFinancialDd {
   extracted_financials: FinancialRecord[];
 }
 
+/** クロス指標（財務PDF × 公表データ、実API） */
+export interface CrossMetrics {
+  has_financials: boolean;
+  /** 従業者1人あたり売上（円） */
+  labor_productivity: number | null;
+  /** 利用者1人あたり収益（円） */
+  revenue_per_user: number | null;
+  /** 実人件費率（0-1） */
+  personnel_cost_ratio: number | null;
+  /** 営業利益率（0-1） */
+  operating_margin: number | null;
+  /** 自己資本比率（0-1） */
+  equity_ratio: number | null;
+  /** 経営危険度スコア（0-100、高いほど危険=M&Aでは売却期待度） */
+  risk_score: number;
+  risk_factors: string[];
+}
+
+/** 行政処分・指導レコード（法人DD、実API） */
+export interface DdViolation {
+  facility_name: string;
+  jigyosho_number: string | null;
+  sanction_date: string | null;
+  sanction_detail: string | null;
+  guidance_date: string | null;
+  guidance_detail: string | null;
+}
+
+/** 職種別人員（施設詳細、実API） */
+export interface StaffingBreakdown {
+  kaigo: { fulltime: number | null; parttime: number | null; total: number | null };
+  nurse: { fulltime: number | null; parttime: number | null; total: number | null };
+  counselor: { fulltime: number | null; parttime: number | null; total: number | null };
+  trainer: { fulltime: number | null; parttime: number | null; total: number | null };
+  dietitian: { fulltime: number | null; parttime: number | null; total: number | null };
+  clerk: { fulltime: number | null; parttime: number | null; total: number | null };
+}
+
 /** DDリスクフラグ（実API） */
 export interface DdRiskFlagApi {
   level: string;
@@ -686,6 +731,8 @@ export interface DdReportResponse {
   risk_flags: DdRiskFlagApi[];
   benchmark: DdBenchmarkApi;
   kasan_summary: DdKasanSummary;
+  /** 法人レベルのクロス指標（施設360°で追加） */
+  cross_metrics?: CrossMetrics;
 }
 
 /** PMI法人サマリー（実API） */
@@ -822,6 +869,27 @@ export interface FacilityRowExtended extends FacilityRow {
   admin_penalty_content: string | null;
   admin_guidance_date: string | null;
   admin_guidance_content: string | null;
+  // ==== facility_detail API(施設360°)で追加配信されるフィールド ====
+  /** 行政処分（「なし」系表記はAPI側で除外済み） */
+  sanction_date?: string | null;
+  sanction_detail?: string | null;
+  guidance_date?: string | null;
+  guidance_detail?: string | null;
+  /** 職種別人員体制 */
+  staffing?: StaffingBreakdown;
+  /** 資格保有者数 */
+  qualifications?: {
+    care_worker: number | null;
+    jitsumusha: number | null;
+    shoninsha: number | null;
+    care_manager: number | null;
+  };
+  night_shift_count?: number | null;
+  night_watch_count?: number | null;
+  /** 利用者数の都道府県平均（自施設比較用） */
+  users_pref_avg?: number | null;
+  /** データ取得日 */
+  scraped_at?: string | null;
 }
 
 /** 経験者割合分布ビン */

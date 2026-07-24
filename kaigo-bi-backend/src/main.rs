@@ -1,3 +1,6 @@
+// facility_detail等の大きなjson!マクロ展開のため再帰上限を引き上げ
+#![recursion_limit = "512"]
+
 /// 介護事業所BIバックエンド
 /// Axum + Turso による軽量APIサーバー
 /// データアクセス: CacheStore（事前計算済みKPI） + Turso SQL（フィルタ付きクエリ）

@@ -589,9 +589,25 @@ function DueDiligenceContent() {
                     行政処分: {report.compliance_dd.has_violations ? "あり" : "なし"}
                   </span>
                 </div>
-                <p className="text-xs text-gray-500 ml-6">
-                  行政処分・指導歴の詳細はフルデータ取得後に表示されます
-                </p>
+                {(report.compliance_dd.violations?.length ?? 0) > 0 ? (
+                  <div className="ml-6 space-y-1.5">
+                    {report.compliance_dd.violations!.map((v, idx) => (
+                      <div key={idx} className="text-xs text-gray-700">
+                        <span className="font-medium">{v.facility_name}</span>
+                        {v.sanction_detail && (
+                          <span className="text-red-700"> — 処分{v.sanction_date ? `（${v.sanction_date}）` : ""}: {v.sanction_detail}</span>
+                        )}
+                        {v.guidance_detail && (
+                          <span className="text-red-600"> — 指導{v.guidance_date ? `（${v.guidance_date}）` : ""}: {v.guidance_detail}</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-xs text-gray-500 ml-6">
+                    公表システム上に行政処分・指導の記録はありません
+                  </p>
+                )}
               </div>
 
               {/* BCP/保険 */}

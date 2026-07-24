@@ -16,6 +16,7 @@ import KpiCard from "@/components/data-display/KpiCard";
 import KpiCardGrid from "@/components/data-display/KpiCardGrid";
 import ChartCard from "@/components/charts/ChartCard";
 import FinancialSummaryCard from "@/components/data-display/FinancialSummaryCard";
+import CrossMetricsCard from "@/components/data-display/CrossMetricsCard";
 import ApiErrorBanner from "@/components/common/ApiErrorBanner";
 import LoadingSpinner from "@/components/common/LoadingSpinner";
 
@@ -138,6 +139,52 @@ function CorpDetailContent() {
                   {flag.detail}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* 行政処分・指導の詳細 */}
+          {(report.compliance_dd.violations?.length ?? 0) > 0 && (
+            <ChartCard title="行政処分・指導の記録" subtitle="介護サービス情報公表システムの公表内容">
+              <div className="space-y-2">
+                {report.compliance_dd.violations!.map((v, idx) => (
+                  <div key={idx} className="p-3 bg-red-50 border border-red-100 rounded-lg text-sm">
+                    <p className="font-medium text-gray-800">
+                      {v.jigyosho_number ? (
+                        <Link href={`/facility?id=${v.jigyosho_number}`} className="text-brand-600 hover:underline">
+                          {v.facility_name}
+                        </Link>
+                      ) : (
+                        v.facility_name
+                      )}
+                    </p>
+                    {v.sanction_detail && (
+                      <p className="text-red-700 mt-1">
+                        処分{v.sanction_date ? `（${v.sanction_date}）` : ""}: {v.sanction_detail}
+                      </p>
+                    )}
+                    {v.guidance_detail && (
+                      <p className="text-red-600 mt-1">
+                        指導{v.guidance_date ? `（${v.guidance_date}）` : ""}: {v.guidance_detail}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </ChartCard>
+          )}
+
+          {/* 法人クロス指標（財務 × 公表データ、M&A文脈） */}
+          {report.cross_metrics?.has_financials && (
+            <CrossMetricsCard metrics={report.cross_metrics} riskLabel="経営危険度（売却期待度）" />
+          )}
+
+          {/* 法人人員サマリー */}
+          {(report.hr_dd.total_kaigo_staff ?? 0) + (report.hr_dd.total_nurse_staff ?? 0) > 0 && (
+            <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-gray-600">
+              <span>介護職員 <strong className="text-gray-900 tabular-nums">{Math.round(report.hr_dd.total_kaigo_staff ?? 0).toLocaleString()}人</strong></span>
+              <span>看護職員 <strong className="text-gray-900 tabular-nums">{Math.round(report.hr_dd.total_nurse_staff ?? 0).toLocaleString()}人</strong></span>
+              <span>介護福祉士 <strong className="text-gray-900 tabular-nums">{Math.round(report.hr_dd.total_care_workers ?? 0).toLocaleString()}人</strong></span>
+              <span>ケアマネ <strong className="text-gray-900 tabular-nums">{Math.round(report.hr_dd.total_care_managers ?? 0).toLocaleString()}人</strong></span>
             </div>
           )}
 
