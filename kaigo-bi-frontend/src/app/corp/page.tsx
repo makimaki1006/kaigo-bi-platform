@@ -7,14 +7,15 @@
 // データソースはDDレポートAPI（M&Aプラン）
 // ===================================================
 
-import { Suspense } from "react";
+import { Suspense, useMemo } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useApi } from "@/hooks/useApi";
-import type { DdReportResponse } from "@/lib/types";
+import type { DdReportResponse, FinancialRecord } from "@/lib/types";
 import KpiCard from "@/components/data-display/KpiCard";
 import KpiCardGrid from "@/components/data-display/KpiCardGrid";
 import ChartCard from "@/components/charts/ChartCard";
+import FinancialSummaryCard from "@/components/data-display/FinancialSummaryCard";
 import ApiErrorBanner from "@/components/common/ApiErrorBanner";
 import LoadingSpinner from "@/components/common/LoadingSpinner";
 
@@ -31,6 +32,28 @@ function CorpDetailContent() {
   const { data: report, error, isLoading } = useApi<DdReportResponse>(
     corpNumber ? `/api/dd/report/${corpNumber}` : null
   );
+
+  // 抽出済み財務データを施設ごとにグループ化（施設名はfinancial_linksから引く）
+  const financialGroups = useMemo(() => {
+    const records = report?.financial_dd?.extracted_financials ?? [];
+    if (records.length === 0) return [];
+    const nameMap = new Map(
+      (report?.financial_dd?.financial_links ?? [])
+        .filter((l) => l.jigyosho_number)
+        .map((l) => [l.jigyosho_number as string, l.facility_name])
+    );
+    const groups = new Map<string, FinancialRecord[]>();
+    for (const rec of records) {
+      const list = groups.get(rec.jigyosho_number) ?? [];
+      list.push(rec);
+      groups.set(rec.jigyosho_number, list);
+    }
+    return Array.from(groups.entries()).map(([jigyosho, recs]) => ({
+      jigyosho,
+      name: nameMap.get(jigyosho) ?? jigyosho,
+      records: recs,
+    }));
+  }, [report]);
 
   if (!corpNumber) {
     return (
@@ -114,6 +137,19 @@ function CorpDetailContent() {
                   <span className="font-semibold">[{flag.category}] </span>
                   {flag.detail}
                 </div>
+              ))}
+            </div>
+          )}
+
+          {/* 抽出済み財務サマリー（決算PDF AI解析済みの施設） */}
+          {financialGroups.length > 0 && (
+            <div className="space-y-3">
+              {financialGroups.map((group) => (
+                <FinancialSummaryCard
+                  key={group.jigyosho}
+                  records={group.records}
+                  subtitle={group.name}
+                />
               ))}
             </div>
           )}

@@ -621,10 +621,31 @@ export interface DdFinancialLink {
   bs_url: string | null;
 }
 
+/** 決算PDF由来の抽出済み財務データ（financialsテーブル、実API） */
+export interface FinancialRecord {
+  jigyosho_number: string;
+  doc_type: "PL" | "BS" | "CF";
+  fiscal_period: string | null;
+  revenue: number | null;
+  personnel_cost: number | null;
+  operating_income: number | null;
+  ordinary_income: number | null;
+  net_income: number | null;
+  prior_revenue: number | null;
+  prior_operating_income: number | null;
+  total_assets: number | null;
+  net_assets: number | null;
+  total_liabilities: number | null;
+  confidence: string | null;
+  notes: string | null;
+}
+
 /** DD財務情報（実API） */
 export interface DdFinancialDd {
   accounting_type: string | null;
   financial_links: DdFinancialLink[];
+  /** 決算PDFからAI抽出した財務データ */
+  extracted_financials: FinancialRecord[];
 }
 
 /** DDリスクフラグ（実API） */

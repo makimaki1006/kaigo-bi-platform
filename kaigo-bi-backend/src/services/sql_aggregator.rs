@@ -1820,7 +1820,12 @@ pub async fn facility_detail(db: &Database, id: &str) -> Result<Value, AppError>
     }
 
     let row = &rows[0];
+
+    // 抽出済み財務データ（あれば）
+    let financials = fetch_financials(&conn, "jigyosho_number", id).await;
+
     Ok(json!({
+        "financials": financials,
         "facility": {
             "jigyosho_number": row_str(row, 0),
             "jigyosho_name": row_str(row, 1),
@@ -1854,6 +1859,45 @@ pub async fn facility_detail(db: &Database, id: &str) -> Result<Value, AppError>
             "financial_statement_url_bs": to_kaigokensaku_url(row_str_opt(row, 29)),
         }
     }))
+}
+
+/// 抽出済み財務データ(financialsテーブル)を取得する
+/// key_col は "jigyosho_number" または "corp_number"
+/// テーブル未作成・エラー時は空配列を返す（財務は付加情報のため本体を止めない）
+async fn fetch_financials(conn: &libsql::Connection, key_col: &str, key: &str) -> Vec<Value> {
+    let sql = format!(
+        "SELECT jigyosho_number, doc_type, fiscal_period, revenue, personnel_cost,
+                operating_income, ordinary_income, net_income,
+                prior_revenue, prior_operating_income,
+                total_assets, net_assets, total_liabilities, confidence, notes
+         FROM financials WHERE {} = ?1 ORDER BY jigyosho_number, doc_type",
+        key_col
+    );
+    let rows = match query_rows_params(conn, &sql, vec![libsql::Value::Text(key.to_string())]).await {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+    rows.iter()
+        .map(|row| {
+            json!({
+                "jigyosho_number": row_str(row, 0),
+                "doc_type": row_str(row, 1),
+                "fiscal_period": row_str_opt(row, 2),
+                "revenue": row_f64_opt(row, 3),
+                "personnel_cost": row_f64_opt(row, 4),
+                "operating_income": row_f64_opt(row, 5),
+                "ordinary_income": row_f64_opt(row, 6),
+                "net_income": row_f64_opt(row, 7),
+                "prior_revenue": row_f64_opt(row, 8),
+                "prior_operating_income": row_f64_opt(row, 9),
+                "total_assets": row_f64_opt(row, 10),
+                "net_assets": row_f64_opt(row, 11),
+                "total_liabilities": row_f64_opt(row, 12),
+                "confidence": row_str_opt(row, 13),
+                "notes": row_str_opt(row, 14),
+            })
+        })
+        .collect()
 }
 
 /// 財務DL列の相対パスを介護情報公表システムの絶対URLに変換する
@@ -2206,6 +2250,7 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
         "financial_dd": {
             "accounting_type": accounting_type,
             "financial_links": financial_links,
+            "extracted_financials": fetch_financials(&conn, "corp_number", corp_number).await,
         },
         "risk_flags": risk_flags,
         "benchmark": benchmark,

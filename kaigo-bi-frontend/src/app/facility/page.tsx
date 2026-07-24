@@ -10,8 +10,9 @@ import { Suspense, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useApi } from "@/hooks/useApi";
-import type { FacilityRow } from "@/lib/types";
+import type { FacilityRow, FinancialRecord } from "@/lib/types";
 import FacilityDetailPanel from "@/components/data-display/FacilityDetailPanel";
+import FinancialSummaryCard from "@/components/data-display/FinancialSummaryCard";
 import ApiErrorBanner from "@/components/common/ApiErrorBanner";
 
 function FacilityDetailContent() {
@@ -19,11 +20,13 @@ function FacilityDetailContent() {
   const searchParams = useSearchParams();
   const id = searchParams.get("id") ?? "";
 
-  const { data, error, isLoading } = useApi<{ facility: FacilityRow }>(
-    id ? `/api/facilities/${id}` : null
-  );
+  const { data, error, isLoading } = useApi<{
+    facility: FacilityRow;
+    financials?: FinancialRecord[];
+  }>(id ? `/api/facilities/${id}` : null);
 
   const facility = useMemo(() => data?.facility ?? null, [data]);
+  const financials = data?.financials ?? [];
 
   if (!id) {
     return (
@@ -65,6 +68,9 @@ function FacilityDetailContent() {
       </div>
 
       <ApiErrorBanner error={error} />
+
+      {/* 財務サマリー（決算PDF抽出済みの場合のみ表示） */}
+      {financials.length > 0 && <FinancialSummaryCard records={financials} />}
 
       {/* 詳細パネル（既存コンポーネントを全画面利用） */}
       <FacilityDetailPanel
