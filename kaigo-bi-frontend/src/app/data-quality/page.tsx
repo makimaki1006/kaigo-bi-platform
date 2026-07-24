@@ -7,6 +7,7 @@
 // ===================================================
 
 import { Suspense, useMemo } from "react";
+import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import { useApi } from "@/hooks/useApi";
 import type { DataMeta, ServiceSummary, PrefectureSummary, ColumnDef } from "@/lib/types";
 import { formatServiceName } from "@/lib/formatters";
@@ -354,9 +355,12 @@ function DataQualityContent() {
 }
 
 export default function DataQualityPage() {
+  // 内部運用ページのためadmin限定
   return (
-    <Suspense fallback={<div className="text-gray-400 text-sm p-8">読み込み中...</div>}>
-      <DataQualityContent />
-    </Suspense>
+    <ProtectedRoute allowedRoles={["admin"]}>
+      <Suspense fallback={<div className="text-gray-400 text-sm p-8">読み込み中...</div>}>
+        <DataQualityContent />
+      </Suspense>
+    </ProtectedRoute>
   );
 }

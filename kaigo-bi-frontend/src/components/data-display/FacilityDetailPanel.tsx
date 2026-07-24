@@ -7,6 +7,8 @@
 // ===================================================
 
 import { Card } from "@tremor/react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import type { FacilityRow, FacilityRowExtended } from "@/lib/types";
 import { KASAN_LABELS } from "@/lib/types";
 import { formatNumber, formatServiceName, formatCorpType } from "@/lib/formatters";
@@ -77,6 +79,10 @@ export default function FacilityDetailPanel({
   loading = false,
   onClose,
 }: FacilityDetailPanelProps) {
+  const pathname = usePathname();
+  // 施設詳細ページ自身で使われている場合はページリンクを出さない
+  const isOnDetailPage = pathname === "/facility";
+
   if (loading) {
     return (
       <Card className="mt-2 border-l-4 border-l-blue-500">
@@ -120,7 +126,25 @@ export default function FacilityDetailPanel({
             <h3 className="text-lg font-bold text-gray-900">
               {facility.jigyosho_name}
             </h3>
-            <p className="text-sm text-gray-500">{facility.corp_name}</p>
+            <p className="text-sm text-gray-500">
+              {facility.corp_name}
+              {facility.corp_number && (
+                <Link
+                  href={`/corp?number=${facility.corp_number}`}
+                  className="ml-2 text-brand-500 hover:underline text-xs"
+                >
+                  法人ページ →
+                </Link>
+              )}
+            </p>
+            {!isOnDetailPage && (
+              <Link
+                href={`/facility?id=${facility.jigyosho_number}`}
+                className="text-xs text-brand-500 hover:underline"
+              >
+                個別ページで開く →
+              </Link>
+            )}
           </div>
           {/* 品質ランクバッジ */}
           {hasQualityData && ext?.quality_rank && (

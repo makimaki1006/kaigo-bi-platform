@@ -1808,7 +1808,8 @@ pub async fn facility_detail(db: &Database, id: &str) -> Result<Value, AppError>
             \"従業者_常勤\", \"従業者_非常勤\", \"従業者_合計\", \"定員\",
             \"事業開始日\", \"前年度採用数\", \"前年度退職数\",
             prefecture, corp_type, turnover_rate, fulltime_ratio, years_in_business,
-            \"サービスコード\", \"サービス名\"
+            \"サービスコード\", \"サービス名\",
+            \"会計種別\", \"財務DL_事業活動計算書\", \"財務DL_資金収支計算書\", \"財務DL_貸借対照表\"
         FROM facilities
         WHERE \"事業所番号\" = ?1
         LIMIT 1";
@@ -1847,8 +1848,27 @@ pub async fn facility_detail(db: &Database, id: &str) -> Result<Value, AppError>
             "years_in_business": row_f64_opt(row, 23),
             "service_code": row_str_opt(row, 24),
             "service_name": row_str_opt(row, 25),
+            "accounting_type": row_str_opt(row, 26),
+            "financial_statement_url_pl": to_kaigokensaku_url(row_str_opt(row, 27)),
+            "financial_statement_url_cf": to_kaigokensaku_url(row_str_opt(row, 28)),
+            "financial_statement_url_bs": to_kaigokensaku_url(row_str_opt(row, 29)),
         }
     }))
+}
+
+/// 財務DL列の相対パスを介護情報公表システムの絶対URLに変換する
+/// （例: /upload/jigyosyofile/... → https://www.kaigokensaku.mhlw.go.jp/upload/...）
+fn to_kaigokensaku_url(path: Option<String>) -> Option<String> {
+    let path = path?;
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+        Some(trimmed.to_string())
+    } else {
+        Some(format!("https://www.kaigokensaku.mhlw.go.jp{}", trimmed))
+    }
 }
 
 // ================================================================
@@ -2039,7 +2059,9 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
             CAST(COALESCE(NULLIF(\"前年度退職数\", ''), '0') AS REAL) as left_count,
             \"サービス名\", occupancy_rate,
             COALESCE(\"品質_BCP策定\", 0) as bcp,
-            COALESCE(\"品質_賠償保険\", 0) as insurance
+            COALESCE(\"品質_賠償保険\", 0) as insurance,
+            \"事業所番号\", \"会計種別\",
+            \"財務DL_事業活動計算書\", \"財務DL_資金収支計算書\", \"財務DL_貸借対照表\"
         FROM facilities
         WHERE \"法人番号\" = ?1";
 
@@ -2068,6 +2090,10 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
     let mut bcp_count = 0usize;
     let mut insurance_count = 0usize;
 
+    // 施設ごとの財務諸表リンク（PL/CF/BSのいずれかがある施設のみ）
+    let mut financial_links = Vec::new();
+    let mut accounting_type: Option<String> = None;
+
     for row in &rows {
         facilities.push(row_str(row, 0));
         if let Some(svc) = row_str_opt(row, 11) { service_types.insert(svc); }
@@ -2087,6 +2113,23 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
         }
         if row_i64(row, 13) == 1 { bcp_count += 1; }
         if row_i64(row, 14) == 1 { insurance_count += 1; }
+
+        // 財務諸表リンク収集
+        if accounting_type.is_none() {
+            accounting_type = row_str_opt(row, 16).filter(|s| !s.trim().is_empty());
+        }
+        let pl = to_kaigokensaku_url(row_str_opt(row, 17));
+        let cf = to_kaigokensaku_url(row_str_opt(row, 18));
+        let bs = to_kaigokensaku_url(row_str_opt(row, 19));
+        if pl.is_some() || cf.is_some() || bs.is_some() {
+            financial_links.push(json!({
+                "facility_name": row_str(row, 0),
+                "jigyosho_number": row_str_opt(row, 15),
+                "pl_url": pl,
+                "cf_url": cf,
+                "bs_url": bs,
+            }));
+        }
     }
 
     let avg_turnover = if turnover_count > 0 { Some(turnover_sum / turnover_count as f64) } else { None };
@@ -2161,8 +2204,8 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
             "insurance_rate": insurance_rate,
         },
         "financial_dd": {
-            "accounting_type": null,
-            "financial_links": [],
+            "accounting_type": accounting_type,
+            "financial_links": financial_links,
         },
         "risk_flags": risk_flags,
         "benchmark": benchmark,

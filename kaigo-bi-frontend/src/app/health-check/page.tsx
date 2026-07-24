@@ -7,6 +7,7 @@
 // ===================================================
 
 import { Suspense, useState, useMemo, useCallback } from "react";
+import ProtectedRoute from "@/components/auth/ProtectedRoute";
 import { useApi } from "@/hooks/useApi";
 import type { FacilitySearchResult, FacilityRow, DashboardKpi } from "@/lib/types";
 import ApiErrorBanner from "@/components/common/ApiErrorBanner";
@@ -391,9 +392,12 @@ function HealthCheckContent() {
 }
 
 export default function HealthCheckPage() {
+  // 内部運用ページのためadmin限定
   return (
-    <Suspense fallback={<div className="text-gray-400 text-sm p-8">読み込み中...</div>}>
-      <HealthCheckContent />
-    </Suspense>
+    <ProtectedRoute allowedRoles={["admin"]}>
+      <Suspense fallback={<div className="text-gray-400 text-sm p-8">読み込み中...</div>}>
+        <HealthCheckContent />
+      </Suspense>
+    </ProtectedRoute>
   );
 }

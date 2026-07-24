@@ -7,6 +7,7 @@
 // ===================================================
 
 import { Suspense, useState, useCallback } from "react";
+import { useSearchParams } from "next/navigation";
 import { Card } from "@tremor/react";
 import RadarChart from "@/components/charts/RadarChart";
 import ChartCard from "@/components/charts/ChartCard";
@@ -154,7 +155,13 @@ const EVAL_STYLES: Record<string, { bg: string; text: string; label: string }> =
 };
 
 function DueDiligenceContent() {
-  const [selectedCorpNumber, setSelectedCorpNumber] = useState<string | null>(null);
+  // /corp ページ等から ?corp=法人番号 で直接開けるようにする
+  const searchParams = useSearchParams();
+  const corpFromQuery = searchParams.get("corp");
+
+  const [selectedCorpNumber, setSelectedCorpNumber] = useState<string | null>(
+    corpFromQuery || null
+  );
   const [selectedCorpName, setSelectedCorpName] = useState<string>("");
 
   // 法人選択ハンドラ
@@ -622,24 +629,46 @@ function DueDiligenceContent() {
                 {report.financial_dd?.accounting_type || "データなし"}
               </div>
               {report.financial_dd?.financial_links?.length > 0 ? (
-                <div className="flex flex-wrap gap-2">
-                  {report.financial_dd?.financial_links?.map((link, idx) => (
-                    <a
-                      key={idx}
-                      href={link}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 px-3 py-2 bg-indigo-50 text-indigo-700 text-sm font-medium rounded-lg border border-indigo-200 hover:bg-indigo-100 transition-colors"
-                    >
-                      <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
-                      財務諸表 {idx + 1}
-                    </a>
-                  ))}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 text-left">
+                        <th className="px-3 py-2 text-gray-500 font-medium">施設</th>
+                        <th className="px-3 py-2 text-gray-500 font-medium text-center">事業活動計算書</th>
+                        <th className="px-3 py-2 text-gray-500 font-medium text-center">資金収支計算書</th>
+                        <th className="px-3 py-2 text-gray-500 font-medium text-center">貸借対照表</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {report.financial_dd.financial_links.map((link, idx) => (
+                        <tr key={idx} className="border-b border-gray-100 hover:bg-gray-50">
+                          <td className="px-3 py-2 text-gray-700">{link.facility_name}</td>
+                          {[link.pl_url, link.cf_url, link.bs_url].map((url, i) => (
+                            <td key={i} className="px-3 py-2 text-center">
+                              {url ? (
+                                <a
+                                  href={url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="inline-flex items-center gap-1 px-2 py-1 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-md border border-indigo-200 hover:bg-indigo-100 transition-colors"
+                                >
+                                  <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
+                                  PDF
+                                </a>
+                              ) : (
+                                <span className="text-gray-300 text-xs">-</span>
+                              )}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               ) : (
                 <DataPendingPlaceholder
                   message="財務諸表データなし"
-                  description="WAM NET連携後に財務諸表ダウンロードリンクを表示します"
+                  description="この法人の施設は財務諸表をまだ公表していません"
                   height={80}
                 />
               )}

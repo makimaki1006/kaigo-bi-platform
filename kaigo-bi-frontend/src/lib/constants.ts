@@ -109,38 +109,65 @@ export const CHART_COLORS = [
   "#9333ea", // purple-600
 ];
 
+/** 課金プランの階層（バックエンド auth/plan.rs と対応） */
+export const PLAN_LEVELS: Record<string, number> = {
+  free: 0,
+  standard: 1,
+  pro: 2,
+  ma: 3,
+};
+
+/** プラン表示名 */
+export const PLAN_NAMES: Record<string, string> = {
+  free: "フリー",
+  standard: "スタンダード",
+  pro: "プロ",
+  ma: "M&A",
+};
+
 /** サイドバーナビゲーション定義 */
 export interface NavItem {
   label: string;
   href: string;
   disabled?: boolean;
   group?: string;
+  /** このページの利用に必要な最低プラン（未指定はfree=全員） */
+  minPlan?: "free" | "standard" | "pro" | "ma";
+  /** adminロールのみ表示 */
+  adminOnly?: boolean;
 }
 
+/**
+ * ナビゲーション（ターゲット別グルーピング）
+ * minPlanはバックエンドのルートゲート（routes/mod.rs）と一致させること
+ */
 export const NAV_ITEMS: NavItem[] = [
-  // Phase 1（有効）
-  { label: "ダッシュボード", href: "/dashboard", group: "Phase 1" },
-  { label: "市場構造", href: "/market", group: "Phase 1" },
-  { label: "施設マスタ", href: "/facilities", group: "Phase 1" },
-  { label: "リスト生成", href: "/list-export", group: "Phase 1" },
-  // Phase 2（有効）
-  { label: "人材分析", href: "/workforce", group: "Phase 2" },
-  { label: "採用天気予報", href: "/hiring-weather", group: "Phase 2" },
-  { label: "収益構造", href: "/revenue", group: "Phase 2" },
-  { label: "賃金分析", href: "/salary", group: "Phase 2" },
-  { label: "経営品質", href: "/quality", group: "Phase 2" },
-  { label: "財務健全度", href: "/financial-health", group: "Phase 2" },
-  { label: "法人グループ", href: "/corp-group", group: "Phase 3" },
-  { label: "法人比較", href: "/corp-compare", group: "Phase 3" },
-  { label: "成長性分析", href: "/growth", group: "Phase 3" },
-  { label: "M&Aスクリーニング", href: "/ma-screening", group: "Phase 3" },
-  { label: "DD支援", href: "/due-diligence", group: "Phase 3" },
-  { label: "PMIシナジー", href: "/pmi-synergy", group: "Phase 3" },
-  { label: "サービスポートフォリオ", href: "/service-portfolio", group: "Phase 3" },
-  { label: "ベンチマーク", href: "/benchmark", group: "Phase 4" },
-  { label: "コスト推定", href: "/cost-estimation", group: "分析" },
-  { label: "トレンド分析", href: "/trends", group: "分析" },
-  { label: "データインサイト", href: "/insights", group: "分析" },
-  { label: "施設ヘルスチェック", href: "/health-check", group: "管理" },
-  { label: "データ品質", href: "/data-quality", group: "管理" },
+  // 市場を知る（全ターゲット共通）
+  { label: "ダッシュボード", href: "/dashboard", group: "市場を知る" },
+  { label: "市場構造", href: "/market", group: "市場を知る", minPlan: "standard" },
+  { label: "トレンド分析", href: "/trends", group: "市場を知る", minPlan: "standard" },
+  { label: "データインサイト", href: "/insights", group: "市場を知る", minPlan: "standard" },
+  // 経営分析（介護事業者向け）
+  { label: "人材分析", href: "/workforce", group: "経営分析", minPlan: "standard" },
+  { label: "採用天気予報", href: "/hiring-weather", group: "経営分析", minPlan: "standard" },
+  { label: "収益構造", href: "/revenue", group: "経営分析", minPlan: "standard" },
+  { label: "賃金分析", href: "/salary", group: "経営分析", minPlan: "standard" },
+  { label: "経営品質", href: "/quality", group: "経営分析", minPlan: "standard" },
+  { label: "ベンチマーク", href: "/benchmark", group: "経営分析", minPlan: "standard" },
+  { label: "コスト推定", href: "/cost-estimation", group: "経営分析", minPlan: "standard" },
+  // リスト作成（営業企業向け）
+  { label: "施設マスタ", href: "/facilities", group: "リスト作成", minPlan: "standard" },
+  { label: "リスト生成", href: "/list-export", group: "リスト作成", minPlan: "pro" },
+  // M&A
+  { label: "法人グループ", href: "/corp-group", group: "M&A", minPlan: "standard" },
+  { label: "法人比較", href: "/corp-compare", group: "M&A", minPlan: "standard" },
+  { label: "成長性分析", href: "/growth", group: "M&A", minPlan: "standard" },
+  { label: "財務健全度", href: "/financial-health", group: "M&A", minPlan: "standard" },
+  { label: "サービスポートフォリオ", href: "/service-portfolio", group: "M&A", minPlan: "standard" },
+  { label: "M&Aスクリーニング", href: "/ma-screening", group: "M&A", minPlan: "ma" },
+  { label: "DD支援", href: "/due-diligence", group: "M&A", minPlan: "ma" },
+  { label: "PMIシナジー", href: "/pmi-synergy", group: "M&A", minPlan: "ma" },
+  // 運用（admin専用）
+  { label: "施設ヘルスチェック", href: "/health-check", group: "運用", adminOnly: true },
+  { label: "データ品質", href: "/data-quality", group: "運用", adminOnly: true },
 ];

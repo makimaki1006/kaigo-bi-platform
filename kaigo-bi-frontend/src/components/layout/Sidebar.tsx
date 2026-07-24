@@ -8,7 +8,7 @@
 import { useCallback } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { NAV_ITEMS } from "@/lib/constants";
+import { NAV_ITEMS, PLAN_LEVELS, PLAN_NAMES } from "@/lib/constants";
 import { useAuthContext } from "@/components/auth/AuthProvider";
 
 /** ナビアイテムに対応するSVGアイコンマップ */
@@ -122,16 +122,19 @@ export default function Sidebar() {
   const router = useRouter();
   const { user, logout } = useAuthContext();
 
-  // ナビアイテムをグループごとに分類
-  const groups = NAV_ITEMS.reduce<Record<string, typeof NAV_ITEMS>>(
-    (acc, item) => {
-      const group = item.group || "Other";
-      if (!acc[group]) acc[group] = [];
-      acc[group].push(item);
-      return acc;
-    },
-    {}
-  );
+  const isAdmin = user?.role === "admin";
+  // adminは全プランゲートをバイパス（バックエンドと同じルール）
+  const userPlanLevel = isAdmin ? 99 : (PLAN_LEVELS[user?.plan ?? "free"] ?? 0);
+
+  // adminOnly項目を除外してからグループごとに分類
+  const groups = NAV_ITEMS.filter((item) => !item.adminOnly || isAdmin).reduce<
+    Record<string, typeof NAV_ITEMS>
+  >((acc, item) => {
+    const group = item.group || "Other";
+    if (!acc[group]) acc[group] = [];
+    acc[group].push(item);
+    return acc;
+  }, {});
 
   // ログアウトハンドラ
   const handleLogout = useCallback(async () => {
@@ -161,6 +164,39 @@ export default function Sidebar() {
         )}
       </span>
       {label}
+    </Link>
+  );
+
+  /** プラン不足でロックされたナビリンク（料金ページへ誘導） */
+  const renderLockedLink = (href: string, label: string, minPlan: string) => (
+    <Link
+      key={href}
+      href="/pricing"
+      className="flex items-center gap-3 mx-2 px-3 py-2 text-sm font-medium rounded-lg
+        text-indigo-400/70 hover:bg-white/5 hover:text-indigo-300 transition-all duration-150"
+      title={`${PLAN_NAMES[minPlan] ?? minPlan}プラン以上で利用できます`}
+    >
+      <span className="flex-shrink-0 text-indigo-500">
+        {NAV_ICONS[href] || (
+          <span className="block w-1.5 h-1.5 rounded-full bg-indigo-500" />
+        )}
+      </span>
+      <span className="flex-1 truncate">{label}</span>
+      {/* 鍵アイコン */}
+      <svg
+        className="w-3.5 h-3.5 flex-shrink-0 text-indigo-500"
+        fill="none"
+        stroke="currentColor"
+        viewBox="0 0 24 24"
+        strokeWidth={2}
+        aria-label={`${PLAN_NAMES[minPlan] ?? minPlan}プラン以上で利用可能`}
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+        />
+      </svg>
     </Link>
   );
 
@@ -205,6 +241,12 @@ export default function Sidebar() {
                     {item.label}
                   </div>
                 );
+              }
+
+              // プラン不足の場合は鍵付きリンク（料金ページへ誘導）
+              const requiredLevel = item.minPlan ? (PLAN_LEVELS[item.minPlan] ?? 0) : 0;
+              if (userPlanLevel < requiredLevel) {
+                return renderLockedLink(item.href, item.label, item.minPlan!);
               }
 
               return renderNavLink(item.href, item.label, isActive);

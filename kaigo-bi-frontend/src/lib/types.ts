@@ -609,10 +609,22 @@ export interface DdComplianceDd {
   insurance_rate: number | null;
 }
 
+/** DD財務諸表リンク（施設単位、実API） */
+export interface DdFinancialLink {
+  facility_name: string;
+  jigyosho_number: string | null;
+  /** 事業活動計算書（損益計算書相当） */
+  pl_url: string | null;
+  /** 資金収支計算書 */
+  cf_url: string | null;
+  /** 貸借対照表 */
+  bs_url: string | null;
+}
+
 /** DD財務情報（実API） */
 export interface DdFinancialDd {
   accounting_type: string | null;
-  financial_links: string[];
+  financial_links: DdFinancialLink[];
 }
 
 /** DDリスクフラグ（実API） */

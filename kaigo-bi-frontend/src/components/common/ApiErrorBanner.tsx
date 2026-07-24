@@ -6,6 +6,7 @@
 // ===================================================
 
 import { useState } from "react";
+import Link from "next/link";
 import type { ApiErrorInfo } from "@/hooks/useApi";
 
 interface ApiErrorBannerProps {
@@ -16,6 +17,50 @@ export default function ApiErrorBanner({ error }: ApiErrorBannerProps) {
   const [dismissed, setDismissed] = useState(false);
 
   if (!error || dismissed) return null;
+
+  // 403はプラン制限（アップグレード誘導）として専用表示する
+  if (error.status === 403) {
+    return (
+      <div
+        className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl text-sm text-indigo-800 flex items-start gap-3"
+        role="alert"
+      >
+        <svg
+          className="w-5 h-5 text-indigo-400 flex-shrink-0 mt-0.5"
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+          strokeWidth={2}
+          aria-hidden="true"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+          />
+        </svg>
+        <div className="flex-1">
+          <span className="font-semibold">上位プランの機能です: </span>
+          <span>{error.message}</span>
+          <Link
+            href="/pricing"
+            className="inline-block ml-2 px-3 py-1 bg-brand-500 text-white text-xs font-semibold rounded-lg hover:bg-brand-600 transition-colors"
+          >
+            料金プランを見る →
+          </Link>
+        </div>
+        <button
+          onClick={() => setDismissed(true)}
+          className="text-indigo-400 hover:opacity-70 flex-shrink-0 p-0.5"
+          aria-label="閉じる"
+        >
+          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+    );
+  }
 
   // 色分け: ネットワーク=amber, 認証=red, サーバー=orange, その他=red
   const styles = error.isNetworkError
