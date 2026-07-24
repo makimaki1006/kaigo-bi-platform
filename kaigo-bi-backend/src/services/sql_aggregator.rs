@@ -210,28 +210,50 @@ async fn query_rows_params(conn: &libsql::Connection, sql: &str, params: Vec<lib
 }
 
 /// Row からf64を安全に取得（NULLは0.0にフォールバック）
+// ⚠️ libsql 0.6 の row.get::<T> は期待型と実際のSQLite型が食い違うと
+// unreachable!() でパニックする（例: TEXT列に get::<f64>）。
+// facilitiesテーブルはCSV再ロードで数値がTEXT格納されているため、
+// 必ず get_value で生値を取ってから安全に変換する。
+
+/// Row からf64を取得（型を問わず変換、失敗時は0.0）
 fn row_f64(row: &libsql::Row, idx: i32) -> f64 {
-    row.get::<f64>(idx as i32).unwrap_or(0.0)
+    row_f64_opt(row, idx).unwrap_or(0.0)
 }
 
-/// Row からf64をOption<f64>で取得
+/// Row からf64をOption<f64>で取得（TEXT数値・INTEGERも変換）
 fn row_f64_opt(row: &libsql::Row, idx: i32) -> Option<f64> {
-    row.get::<f64>(idx as i32).ok()
+    match row.get_value(idx as i32).ok()? {
+        libsql::Value::Real(f) => Some(f),
+        libsql::Value::Integer(i) => Some(i as f64),
+        libsql::Value::Text(s) => s.trim().replace(',', "").parse::<f64>().ok(),
+        _ => None,
+    }
 }
 
-/// Row からi64を取得
+/// Row からi64を取得（型を問わず変換、失敗時は0）
 fn row_i64(row: &libsql::Row, idx: i32) -> i64 {
-    row.get::<i64>(idx as i32).unwrap_or(0)
+    match row.get_value(idx as i32).ok() {
+        Some(libsql::Value::Integer(i)) => i,
+        Some(libsql::Value::Real(f)) => f as i64,
+        Some(libsql::Value::Text(s)) => s.trim().parse::<f64>().map(|f| f as i64).unwrap_or(0),
+        _ => 0,
+    }
 }
 
-/// Row からStringを取得
+/// Row からStringを取得（数値型も文字列化）
 fn row_str(row: &libsql::Row, idx: i32) -> String {
-    row.get::<String>(idx as i32).unwrap_or_default()
+    match row.get_value(idx as i32).ok() {
+        Some(libsql::Value::Text(s)) => s,
+        Some(libsql::Value::Integer(i)) => i.to_string(),
+        Some(libsql::Value::Real(f)) => f.to_string(),
+        _ => String::new(),
+    }
 }
 
-/// Row からOption<String>を取得
+/// Row からOption<String>を取得（空文字はNone扱い）
 fn row_str_opt(row: &libsql::Row, idx: i32) -> Option<String> {
-    row.get::<String>(idx as i32).ok().filter(|s| !s.is_empty())
+    let s = row_str(row, idx);
+    if s.is_empty() { None } else { Some(s) }
 }
 
 // ================================================================
