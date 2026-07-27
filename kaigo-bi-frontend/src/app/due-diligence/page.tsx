@@ -260,10 +260,10 @@ function DueDiligenceContent() {
 
           {/* 4軸レーダー + DD詳細 */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* 4軸レーダーチャート */}
+            {/* DD評価レーダー（財務は点数化せず別枠で状態表示） */}
             <ChartCard
-              title="DD 4軸評価"
-              subtitle="事業DD / 人事DD / コンプラDD / 財務DD"
+              title="DD 3軸評価"
+              subtitle="事業DD / 人事DD / コンプラDD（財務は下部で状態表示）"
             >
               <RadarChart
                 data={ddScores}
@@ -327,24 +327,30 @@ function DueDiligenceContent() {
                   </div>
                 </div>
 
-                {/* 財務DD */}
+                {/* 財務DD(レビュー③対応: 点数化せず状態を表示) */}
                 <div className="rounded-lg border border-gray-200 bg-gray-50 p-3">
-                  <h4 className="text-sm font-semibold text-gray-600 mb-2">
-                    財務DD ({ddScores[3]?.score ?? "-"}点)
-                  </h4>
-                  {report.financial_dd?.accounting_type ? (
+                  <h4 className="text-sm font-semibold text-gray-600 mb-2">財務DD</h4>
+                  {(report.financial_dd?.extracted_facility_count ?? 0) > 0 ? (
                     <div className="text-xs text-gray-600">
-                      <div>会計処理: {report.financial_dd.accounting_type}</div>
-                      {report.financial_dd?.financial_links?.length > 0 && (
-                        <div>関連リンク: {report.financial_dd.financial_links.length}件</div>
+                      <div className="inline-flex items-center px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 text-[10px] font-medium mb-1">
+                        財務数値をAI抽出済み
+                      </div>
+                      <div>抽出済み: {report.financial_dd.extracted_facility_count}施設</div>
+                      {report.financial_dd?.accounting_type && (
+                        <div>会計処理: {report.financial_dd.accounting_type}</div>
                       )}
                     </div>
+                  ) : (report.financial_dd?.financial_links?.length ?? 0) > 0 ? (
+                    <div className="text-xs text-gray-600">
+                      <div className="inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-700 border border-indigo-200 text-[10px] font-medium mb-1">
+                        PDFあり・AI抽出前
+                      </div>
+                      <div>財務諸表PDF: {report.financial_dd.financial_links.length}施設が公表</div>
+                    </div>
                   ) : (
-                    <DataPendingPlaceholder
-                      message="財務データ未取得"
-                      description="WAM NETの財務諸表データと連携後に表示"
-                      height={60}
-                    />
+                    <div className="text-xs text-gray-400">
+                      公表システム上に財務諸表PDFは確認できませんでした（未公表または外部URL提出の可能性）
+                    </div>
                   )}
                 </div>
               </div>
