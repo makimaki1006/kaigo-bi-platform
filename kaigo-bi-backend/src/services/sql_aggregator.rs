@@ -356,6 +356,8 @@ pub async fn dashboard_by_service(db: &Database, params: &FilterParams) -> Resul
         &[
             "COUNT(*) as facility_count",
             "AVG(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), NULL) AS REAL)) as avg_staff",
+            // フロントの「総従業者数」列が total_staff を参照するため合計も返す(全行"-"だった不具合)
+            "SUM(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL)) as total_staff",
         ],
         &where_clause,
         extra_cond,
@@ -372,6 +374,7 @@ pub async fn dashboard_by_service(db: &Database, params: &FilterParams) -> Resul
             "service_name": row_str(row, 1),
             "facility_count": row_i64(row, 2),
             "avg_staff": row_f64(row, 3),
+            "total_staff": row_i64(row, 4),
         })
     }).collect();
 
