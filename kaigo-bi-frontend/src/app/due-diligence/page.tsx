@@ -52,9 +52,9 @@ function buildBenchmarkRows(report: DdReportResponse) {
     evaluation: "good" | "average" | "poor";
   }[] = [];
 
-  // 離職率比較
-  const corpTurnover = report.hr_dd.avg_turnover_rate;
-  const regionTurnover = report.benchmark.region_avg_turnover;
+  // 離職率比較（avg_turnover_rate・region_avg_turnover は 0-1 の小数なので % に変換）
+  const corpTurnover = report.hr_dd.avg_turnover_rate != null ? report.hr_dd.avg_turnover_rate * 100 : null;
+  const regionTurnover = report.benchmark.region_avg_turnover * 100;
   if (corpTurnover != null) {
     const diff = corpTurnover - regionTurnover;
     rows.push({
@@ -90,8 +90,8 @@ function buildBenchmarkRows(report: DdReportResponse) {
     evaluation: Math.abs(capDiff) < 5 ? "average" : capDiff > 0 ? "good" : "poor",
   });
 
-  // 常勤比率
-  const fulltimeRatio = report.hr_dd.avg_fulltime_ratio;
+  // 常勤比率（avg_fulltime_ratio は 0-1 の小数なので % に変換）
+  const fulltimeRatio = report.hr_dd.avg_fulltime_ratio != null ? report.hr_dd.avg_fulltime_ratio * 100 : null;
   if (fulltimeRatio != null) {
     rows.push({
       metric: "常勤比率",
@@ -126,8 +126,9 @@ function computeDdScores(report: DdReportResponse) {
   );
 
   // 人事DD: 離職率が低いほど高スコア + 常勤比率
-  const turnover = report.hr_dd.avg_turnover_rate ?? 20;
-  const fulltime = report.hr_dd.avg_fulltime_ratio ?? 50;
+  // avg_turnover_rate・avg_fulltime_ratio は 0-1 の小数なので % に変換してから計算
+  const turnover = (report.hr_dd.avg_turnover_rate ?? 0.2) * 100;
+  const fulltime = (report.hr_dd.avg_fulltime_ratio ?? 0.5) * 100;
   const hrScore = Math.max(0, Math.min(100, 100 - turnover * 2 + fulltime * 0.3));
 
   // コンプラDD: 違反なし + BCP + 保険
@@ -308,8 +309,8 @@ function DueDiligenceContent() {
                     人事DD ({ddScores[1]?.score ?? "-"}点)
                   </h4>
                   <div className="grid grid-cols-2 gap-2 text-xs text-gray-600">
-                    <div>離職率: {report.hr_dd.avg_turnover_rate != null ? `${report.hr_dd.avg_turnover_rate.toFixed(1)}%` : "-"}</div>
-                    <div>常勤比率: {report.hr_dd.avg_fulltime_ratio != null ? `${report.hr_dd.avg_fulltime_ratio.toFixed(1)}%` : "-"}</div>
+                    <div>離職率: {report.hr_dd.avg_turnover_rate != null ? `${(report.hr_dd.avg_turnover_rate * 100).toFixed(1)}%` : "-"}</div>
+                    <div>常勤比率: {report.hr_dd.avg_fulltime_ratio != null ? `${(report.hr_dd.avg_fulltime_ratio * 100).toFixed(1)}%` : "-"}</div>
                     <div>前年度採用: {Math.round(report.hr_dd.total_hired)}人</div>
                     <div>前年度退職: {Math.round(report.hr_dd.total_left)}人</div>
                   </div>

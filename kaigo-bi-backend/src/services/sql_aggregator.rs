@@ -273,7 +273,7 @@ pub async fn dashboard_kpi(db: &Database, params: &FilterParams) -> Result<Value
                 THEN CAST(\"定員\" AS REAL) END) as avg_capacity,
             AVG(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END) as avg_turnover,
             AVG(CASE WHEN fulltime_ratio BETWEEN 0.0 AND 1.0 THEN fulltime_ratio END) as avg_fulltime,
-            AVG(years_in_business) as avg_years
+            AVG(CASE WHEN years_in_business > 0 AND years_in_business <= 100 THEN years_in_business END) as avg_years
         FROM facilities {}",
         where_clause, cap = MAX_CAPACITY_FILTER
     );
@@ -1557,12 +1557,13 @@ pub async fn growth_kpi(db: &Database, params: &FilterParams) -> Result<Value, A
     let w = WhereBuilder::from_filter_params(params);
     let where_clause = w.to_where_clause();
 
+    // years_in_business の異常値(パース失敗の負値・巨大値)を除外(0超〜100年)
     let sql = format!(
         "SELECT
             COUNT(*) as total_with_date,
             AVG(years_in_business) as avg_years,
             SUM(CASE WHEN years_in_business <= 3 THEN 1 ELSE 0 END) as recent_3yr
-        FROM facilities {} {} years_in_business IS NOT NULL",
+        FROM facilities {} {} years_in_business IS NOT NULL AND years_in_business > 0 AND years_in_business <= 100",
         where_clause,
         if where_clause.is_empty() { "WHERE" } else { "AND" }
     );
@@ -1592,11 +1593,14 @@ pub async fn growth_establishment_trend(db: &Database, params: &FilterParams) ->
     let year_idx = query_params.len() + 1;
     query_params.push(libsql::Value::Integer(current_year as i64));
 
+    // レビュー対応(2026-07-28): years_in_business に事業開始日パース失敗由来の
+    // 異常値(min -2979 / max 1804)が20件混入し、設立年5005・222等が出ていた。
+    // 妥当な事業年数(0超〜100年)に絞り、異常年を除外する。
     let sql = format!(
         "SELECT
             (?{} - CAST(years_in_business AS INTEGER)) as est_year,
             COUNT(*) as cnt
-        FROM facilities {} {} years_in_business IS NOT NULL AND years_in_business > 0
+        FROM facilities {} {} years_in_business IS NOT NULL AND years_in_business > 0 AND years_in_business <= 100
         GROUP BY est_year
         ORDER BY est_year ASC",
         year_idx,
@@ -2386,12 +2390,25 @@ pub async fn ma_screening(
 
     let total = items.len();
 
+    // レビュー対応(2026-07-28): funnelの「全法人」が表示件数(LIMIT後)と同値になる誤りを修正。
+    // 全国のユニーク法人総数を別途取得し、「表示中は上位のみ」であることを正直に示す。
+    let total_corps = query_single_row_params(
+        &conn,
+        "SELECT COUNT(DISTINCT \"法人番号\") FROM facilities WHERE COALESCE(\"法人番号\",'') != ''",
+        vec![],
+    )
+    .await
+    .ok()
+    .map(|r| row_i64(&r, 0))
+    .unwrap_or(total as i64);
+
     Ok(json!({
         "items": items,
         "total": total,
+        "total_corps": total_corps,
         "funnel": [
-            {"stage": "全法人", "count": total},
-            {"stage": "条件適合", "count": total},
+            {"stage": "全国の法人", "count": total_corps},
+            {"stage": "表示（条件該当・上位）", "count": total},
         ],
     }))
 }

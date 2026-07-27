@@ -159,15 +159,25 @@ function WorkforceContent() {
   }, [jobOpeningsData]);
 
   // 労働市場トレンド（折れ線グラフ用）
-  // separation_rate（離職率）を使用
+  // API は全47都道府県×各年を返すため、年ごとに全国平均へ集約する
+  // （そのまま繋ぐと同一年が47回並び「くし状」になっていた）。
+  // separation_rate は既に % 値なので ×100 しない。
   const laborTrendsChartData = useMemo(() => {
     if (!laborTrendsData) return [];
-    return [...laborTrendsData]
-      .filter((d) => d.fiscal_year != null && d.separation_rate != null)
-      .sort((a, b) => String(a.fiscal_year).localeCompare(String(b.fiscal_year)))
-      .map((d) => ({
-        year: String(d.fiscal_year),
-        turnover_rate: Math.round((d.separation_rate ?? 0) * 1000) / 10,
+    const byYear = new Map<string, { sum: number; n: number }>();
+    for (const d of laborTrendsData) {
+      if (d.fiscal_year == null || d.separation_rate == null) continue;
+      const y = String(d.fiscal_year);
+      const acc = byYear.get(y) ?? { sum: 0, n: 0 };
+      acc.sum += d.separation_rate;
+      acc.n += 1;
+      byYear.set(y, acc);
+    }
+    return Array.from(byYear.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([year, { sum, n }]) => ({
+        year,
+        turnover_rate: Math.round((sum / n) * 10) / 10,
       }));
   }, [laborTrendsData]);
 

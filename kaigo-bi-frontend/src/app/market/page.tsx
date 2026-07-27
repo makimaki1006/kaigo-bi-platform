@@ -138,18 +138,24 @@ function MarketContent() {
   }, [populationData]);
 
   // 介護需要トレンド（折れ線グラフ用）
-  // バックエンドは day_service_offices + home_care_offices を施設数、
-  // day_service_users + home_care_users を利用者数として集計
+  // API は全47都道府県×各年を返すため、年ごとに全国合計へ集約する
+  // （そのまま繋ぐと同一年が47回並び「くし状」になっていた）。
   const careDemandChartData = useMemo(() => {
     if (!careDemandData) return [];
-    return [...careDemandData]
-      .filter((d) => d.fiscal_year != null)
-      .sort((a, b) => String(a.fiscal_year).localeCompare(String(b.fiscal_year)))
-      .map((d) => ({
-        year: String(d.fiscal_year),
-        facility_count: (d.day_service_offices ?? 0) + (d.home_care_offices ?? 0) + (d.nursing_home_count ?? 0) + (d.health_facility_count ?? 0),
-        user_count: (d.day_service_users ?? 0) + (d.home_care_users ?? 0),
-      }));
+    const byYear = new Map<string, { facility_count: number; user_count: number }>();
+    for (const d of careDemandData) {
+      if (d.fiscal_year == null) continue;
+      const y = String(d.fiscal_year);
+      const acc = byYear.get(y) ?? { facility_count: 0, user_count: 0 };
+      acc.facility_count +=
+        (d.day_service_offices ?? 0) + (d.home_care_offices ?? 0) +
+        (d.nursing_home_count ?? 0) + (d.health_facility_count ?? 0);
+      acc.user_count += (d.day_service_users ?? 0) + (d.home_care_users ?? 0);
+      byYear.set(y, acc);
+    }
+    return Array.from(byYear.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([year, v]) => ({ year, ...v }));
   }, [careDemandData]);
 
   // 施設マップ用マーカーデータ
