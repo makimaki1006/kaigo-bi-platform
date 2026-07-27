@@ -19,15 +19,8 @@ const nextConfig = {
     scrollRestoration: true,
   },
 
-  async redirects() {
-    return [
-      {
-        source: "/",
-        destination: "/dashboard",
-        permanent: false,
-      },
-    ];
-  },
+  // 注: 以前あった "/" → "/dashboard" リダイレクトは削除した。
+  // "/" は公開SEOトップページ（src/app/page.tsx）として提供する。
 
   // 環境変数のバリデーション（ビルド時警告）
   env: {

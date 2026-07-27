@@ -128,7 +128,7 @@ export default function PricingPage() {
         <div className="text-center mb-10">
           <h1 className="text-3xl font-bold text-gray-900 mb-3">料金プラン</h1>
           <p className="text-sm text-gray-500">
-            全国223,000施設の介護事業所データを、目的に合わせたプランで。
+            全国223,103の施設・サービスレコード（約19万事業所）の介護市場データを、目的に合わせたプランで。
           </p>
           {isAuthenticated ? (
             <p className="text-xs text-gray-400 mt-2">
@@ -228,7 +228,7 @@ export default function PricingPage() {
 
         {/* 注記 */}
         <p className="text-center text-xs text-gray-400 mt-10">
-          価格は税別です。プランの変更・解約はいつでも可能です。
+          表示価格はすべて税別です。プランの変更・解約は、ログイン後の「現在の契約」画面（Stripeカスタマーポータル）からいつでも行えます。
           決済はStripeにより安全に処理されます。
         </p>
       </div>

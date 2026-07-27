@@ -11,19 +11,20 @@ import { usePathname } from "next/navigation";
 import Sidebar from "@/components/layout/Sidebar";
 import Header from "@/components/layout/Header";
 import ProtectedRoute from "@/components/auth/ProtectedRoute";
+import { isPublicPath } from "@/lib/public-paths";
 
 interface AppShellProps {
   children: ReactNode;
 }
 
-/** サイドバー/認証ガードなしで表示する公開ページ */
-const PUBLIC_PATHS = ["/login", "/signup", "/pricing", "/forgot-password", "/reset-password"];
-
 export default function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
 
-  // 公開ページではサイドバー/ヘッダーなしの全画面レイアウト
-  if (PUBLIC_PATHS.includes(pathname)) {
+  // 公開ページ（公開SEOページ + 認証系ページ）は、
+  // サイドバー/ヘッダー/ProtectedRoute を通さず素通しにする。
+  // 公開SEOページ自身が PublicLayout を使ってヘッダー/フッターを描画する。
+  // 公開パスの一覧は src/lib/public-paths.ts で一元管理。
+  if (isPublicPath(pathname)) {
     return <>{children}</>;
   }
 
