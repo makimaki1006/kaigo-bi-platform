@@ -5,14 +5,25 @@
 // ===================================================
 
 /**
+ * 環境変数未設定時のfallback。
+ * 本番ビルド(NODE_ENV=production)では現行の本番URLを既定にする。
+ * これにより NEXT_PUBLIC_SITE_URL 未設定でも canonical/OG/sitemap が
+ * localhost を指してSEOが壊れる事故を防ぐ。
+ * 独自ドメインへ移行する際は NEXT_PUBLIC_SITE_URL を設定すれば上書きされる。
+ */
+const FALLBACK_SITE_URL =
+  process.env.NODE_ENV === "production"
+    ? "https://kaigo-bi.onrender.com"
+    : "http://localhost:3000";
+
+/**
  * 公開サイトの基準URL（末尾スラッシュなしの絶対URL）。
  *
- * 本番は環境変数 `NEXT_PUBLIC_SITE_URL` で設定する（例: https://kaigo-bi.onrender.com）。
- * 独自ドメインへ移行する際も、この環境変数の変更だけで全URLが切り替わる。
- * ローカル開発時の fallback は http://localhost:3000。
+ * 本番で独自ドメインに切り替える場合のみ環境変数 `NEXT_PUBLIC_SITE_URL` を設定する。
+ * 未設定でも本番ビルドでは上記 FALLBACK_SITE_URL（現行の本番URL）が使われる。
  */
 export const SITE_URL: string = normalizeBaseUrl(
-  process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"
+  process.env.NEXT_PUBLIC_SITE_URL ?? FALLBACK_SITE_URL
 );
 
 /**
