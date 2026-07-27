@@ -658,12 +658,28 @@ export interface DdFinancialDd {
   financial_links: DdFinancialLink[];
   /** 決算PDFからAI抽出した財務データ */
   extracted_financials: FinancialRecord[];
+  /** 財務PDFリンクを持つ施設数 */
+  pdf_facility_count?: number;
+  /** AI抽出済みの施設数 */
+  extracted_facility_count?: number;
+}
+
+/** クロス指標カバレッジ（未知と安全を区別するため） */
+export interface CrossMetricsCoverage {
+  available_factors: number;
+  required_factors: number;
+  /** 算定に足るファクタが揃っているか */
+  computable: boolean;
+  /** 採用した決算期（PL/BSがスコープ一致した場合） */
+  fiscal_period: string | null;
+  /** PLとBSが同一施設・同一決算期で結合できたか */
+  pl_bs_scope_matched: boolean;
 }
 
 /** クロス指標（財務PDF × 公表データ、実API） */
 export interface CrossMetrics {
   has_financials: boolean;
-  /** 従業者1人あたり売上（円） */
+  /** 従業者1人あたり売上（円）。法人レベルでは粒度不一致のためnull */
   labor_productivity: number | null;
   /** 利用者1人あたり収益（円） */
   revenue_per_user: number | null;
@@ -671,12 +687,17 @@ export interface CrossMetrics {
   personnel_cost_ratio: number | null;
   /** 営業利益率（0-1） */
   operating_margin: number | null;
-  /** 自己資本比率（0-1） */
+  /** 自己資本比率（0-1、PL/BSスコープ一致時のみ） */
   equity_ratio: number | null;
-  /** 経営危険度スコア（0-100、高いほど危険=M&Aでは売却期待度） */
-  risk_score: number;
-  risk_factors: string[];
+  /** 要確認シグナル（検証済みスコアではない） */
+  signals: string[];
+  /** 該当シグナル数。算定不能時はnull（未知≠安全） */
+  signal_count: number | null;
+  coverage: CrossMetricsCoverage;
 }
+
+/** 施設・法人の財務データ状態 */
+export type FinancialStatus = "extracted" | "pdf_available" | "not_published";
 
 /** 行政処分・指導レコード（法人DD、実API） */
 export interface DdViolation {

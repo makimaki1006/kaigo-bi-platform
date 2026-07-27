@@ -4,15 +4,62 @@
 
 use axum::{
     body::Body,
-    extract::Request,
+    extract::{Request, State},
     http::StatusCode,
     middleware::Next,
     response::{IntoResponse, Response},
     Json,
 };
 use serde_json::json;
+use std::collections::HashMap;
+use std::sync::{Mutex, OnceLock};
+use std::time::{Duration, Instant};
 
 use super::jwt::Claims;
+use crate::routes::SharedState;
+
+/// 現行プランの短期キャッシュ(user_id → (plan, 取得時刻))
+/// レビュー⑦対応: JWT内のプランは最大24時間古くなるため、課金対象APIでは
+/// DBの現行プランを確認する。ただし毎回SELECTするとレイテンシが増えるので
+/// 5分TTLのメモリキャッシュを噛ませる(Stripe webhookでのプラン変更は稀)。
+static PLAN_CACHE: OnceLock<Mutex<HashMap<String, (String, Instant)>>> = OnceLock::new();
+const PLAN_CACHE_TTL: Duration = Duration::from_secs(300);
+
+fn plan_cache() -> &'static Mutex<HashMap<String, (String, Instant)>> {
+    PLAN_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+/// DBから現行プランを取得(5分キャッシュ)。取得失敗時はJWTのプランにフォールバック。
+async fn current_plan(state: &SharedState, user_id: &str, jwt_plan: &str) -> String {
+    let now = Instant::now();
+    if let Ok(cache) = plan_cache().lock() {
+        if let Some((plan, at)) = cache.get(user_id) {
+            if now.duration_since(*at) < PLAN_CACHE_TTL {
+                return plan.clone();
+            }
+        }
+    }
+    let plan = match state.db.connect() {
+        Ok(conn) => match conn
+            .query(
+                "SELECT COALESCE(plan, 'free') FROM users WHERE id = ?1",
+                libsql::params![user_id.to_string()],
+            )
+            .await
+        {
+            Ok(mut rows) => match rows.next().await {
+                Ok(Some(row)) => row.get::<String>(0).unwrap_or_else(|_| jwt_plan.to_string()),
+                _ => jwt_plan.to_string(),
+            },
+            Err(_) => jwt_plan.to_string(),
+        },
+        Err(_) => jwt_plan.to_string(),
+    };
+    if let Ok(mut cache) = plan_cache().lock() {
+        cache.insert(user_id.to_string(), (plan.clone(), now));
+    }
+    plan
+}
 
 /// プラン名を数値レベルに変換する（不明なプランはfree扱い）
 pub fn plan_level(plan: &str) -> u8 {
@@ -36,8 +83,13 @@ pub fn plan_display_name(plan: &str) -> &'static str {
 
 /// プランゲートミドルウェア
 /// auth_middleware より内側で使用する（Extension<Claims> が必要）
-/// admin ロールは常に通過
-pub async fn require_plan(min_plan: &'static str, req: Request<Body>, next: Next) -> Response {
+/// admin ロールは常に通過。プランは JWT ではなく DB の現行値(5分キャッシュ)で判定。
+pub async fn require_plan(
+    min_plan: &'static str,
+    State(state): State<SharedState>,
+    req: Request<Body>,
+    next: Next,
+) -> Response {
     let claims = match req.extensions().get::<Claims>() {
         Some(c) => c.clone(),
         None => {
@@ -54,7 +106,10 @@ pub async fn require_plan(min_plan: &'static str, req: Request<Body>, next: Next
         return next.run(req).await;
     }
 
-    if plan_level(&claims.plan) >= plan_level(min_plan) {
+    // JWT内のplanは古い可能性があるため、DBの現行プランで判定する
+    let plan = current_plan(&state, &claims.sub, &claims.plan).await;
+
+    if plan_level(&plan) >= plan_level(min_plan) {
         next.run(req).await
     } else {
         (
@@ -63,12 +118,12 @@ pub async fn require_plan(min_plan: &'static str, req: Request<Body>, next: Next
                 "error": format!(
                     "この機能は{}プラン以上でご利用いただけます（現在: {}プラン）",
                     plan_display_name(min_plan),
-                    plan_display_name(&claims.plan)
+                    plan_display_name(&plan)
                 ),
                 "status": 403,
                 "code": "plan_required",
                 "required_plan": min_plan,
-                "current_plan": claims.plan,
+                "current_plan": plan,
             })),
         )
             .into_response()

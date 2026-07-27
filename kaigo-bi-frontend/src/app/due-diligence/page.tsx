@@ -136,14 +136,12 @@ function computeDdScores(report: DdReportResponse) {
     ((report.compliance_dd.bcp_rate ?? 0) * 30) +
     ((report.compliance_dd.insurance_rate ?? 0) * 30);
 
-  // 財務DD: データ有無で判定
-  const finScore = report.financial_dd.accounting_type ? 50 : 30;
-
+  // 財務DDはスコア化しない(レビュー③対応: 会計種類有無で50/30点は財務健全性を表さない)。
+  // 財務は別セクションで「未評価/PDFあり/AI抽出済み」の状態として表示する。
   return [
     { axis: "事業DD", score: Math.round(bizScore), fullMark: 100 },
     { axis: "人事DD", score: Math.round(hrScore), fullMark: 100 },
     { axis: "コンプラDD", score: Math.round(Math.min(100, compScore)), fullMark: 100 },
-    { axis: "財務DD", score: Math.round(finScore), fullMark: 100 },
   ];
 }
 

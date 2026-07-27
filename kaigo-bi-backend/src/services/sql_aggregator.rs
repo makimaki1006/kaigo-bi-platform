@@ -1877,9 +1877,23 @@ pub async fn facility_detail(db: &Database, id: &str) -> Result<Value, AppError>
         has_violation,
     );
 
+    // 財務データの状態(レビュー④対応: 未公表/未取得/PDFあり抽出前/抽出済み を区別)
+    let has_pdf_link = row_str_opt(row, 27).is_some()
+        || row_str_opt(row, 28).is_some()
+        || row_str_opt(row, 29).is_some();
+    let has_extracted = !financials.is_empty();
+    let financial_status = if has_extracted {
+        "extracted"        // 決算PDFをAI抽出済み(財務サマリー・クロス指標あり)
+    } else if has_pdf_link {
+        "pdf_available"    // PDFリンクはあるがAI未抽出
+    } else {
+        "not_published"    // 公表システム上に財務諸表なし(uneiスクレイプ済みが前提)
+    };
+
     Ok(json!({
         "financials": financials,
         "cross_metrics": cross_metrics,
+        "financial_status": financial_status,
         "facility": {
             "jigyosho_number": row_str(row, 0),
             "jigyosho_name": row_str(row, 1),
@@ -2046,7 +2060,15 @@ fn is_real_violation(text: &Option<String>) -> bool {
 }
 
 /// 決算PDF由来financials × 公表データのクロス指標を計算する
-/// PL/BSが無い場合は has_financials: false のみ返す（財務スケール化に伴い自動で充実）
+///
+/// レビュー指摘(2026-07-27)を反映した設計:
+/// - PL/BSは **同一事業所番号・同一会計期間** のペアだけを結合する。
+///   異なる施設・年度のPLとBSを混ぜて自己資本比率等を算出しない。
+/// - risk_score(=要確認シグナル)は「未知」と「安全」を混同しないため、
+///   必要ファクタが最低限揃わなければ null(算定不能)を返す。
+/// - coverage(揃ったファクタ/必要ファクタ)を返し、UIが状態を出し分けられるようにする。
+/// - 労働生産性・利用者単価は財務(施設単位)と公表値(施設単位)の粒度が一致する
+///   施設単位でのみ意味を持つ。法人合算との混合は呼び出し側で避ける。
 fn build_cross_metrics(
     financials: &[Value],
     staff_total: Option<f64>,
@@ -2055,83 +2077,114 @@ fn build_cross_metrics(
     occupancy_rate: Option<f64>,
     has_violation: bool,
 ) -> Value {
-    let pl = financials.iter().find(|f| f["doc_type"] == "PL");
-    let bs = financials.iter().find(|f| f["doc_type"] == "BS");
+    // 同一事業所番号 × 同一会計期間 のPL/BSペアを探す(スコープ混在防止)
+    let (pl, bs) = pick_consistent_pl_bs(financials);
 
     let revenue = pl.and_then(|p| p["revenue"].as_f64());
     let personnel_cost = pl.and_then(|p| p["personnel_cost"].as_f64());
     let operating_income = pl.and_then(|p| p["operating_income"].as_f64());
+    // net_assets/total_assets は PL と会計期間・施設が一致する BS からのみ取る
     let net_assets = bs.and_then(|b| b["net_assets"].as_f64());
     let total_assets = bs.and_then(|b| b["total_assets"].as_f64());
 
-    // クロス指標①: 労働生産性（従業者1人あたり売上）
     let labor_productivity = match (revenue, staff_total) {
         (Some(r), Some(s)) if s > 0.0 => Some(r / s),
         _ => None,
     };
-    // クロス指標③: 利用者1人あたり収益
     let revenue_per_user = match (revenue, total_users) {
         (Some(r), Some(u)) if u > 0.0 => Some(r / u),
         _ => None,
     };
-    // クロス指標②: 実人件費率（PDF実額ベース）
     let personnel_cost_ratio = match (personnel_cost, revenue) {
         (Some(p), Some(r)) if r > 0.0 => Some(p / r),
         _ => None,
     };
-    // 営業利益率
     let operating_margin = match (operating_income, revenue) {
         (Some(o), Some(r)) if r > 0.0 => Some(o / r),
         _ => None,
     };
-    // 自己資本比率
+    // 自己資本比率は PL とスコープ一致した BS がある場合のみ
     let equity_ratio = match (net_assets, total_assets) {
         (Some(n), Some(t)) if t > 0.0 => Some(n / t),
         _ => None,
     };
 
-    // クロス指標④⑥: 経営危険度スコア（0-100、高いほど危険 = M&Aでは売却期待度）
-    let mut risk_score = 0i64;
-    let mut risk_factors: Vec<String> = Vec::new();
-    if let Some(n) = net_assets {
-        if n < 0.0 {
-            risk_score += 40;
-            risk_factors.push("債務超過".to_string());
-        }
-    }
-    if let Some(o) = operating_income {
-        if o < 0.0 {
-            risk_score += 20;
-            risk_factors.push("営業赤字".to_string());
-        }
-    }
-    if let Some(t) = turnover_rate {
-        if t > 0.25 {
-            risk_score += 15;
-            risk_factors.push(format!("高離職率 {:.0}%", t * 100.0));
-        }
-    }
-    if has_violation {
-        risk_score += 15;
-        risk_factors.push("行政処分・指導歴".to_string());
-    }
-    if let Some(o) = occupancy_rate {
-        if o < 0.5 {
-            risk_score += 10;
-            risk_factors.push(format!("低稼働率 {:.0}%", o * 100.0));
-        }
-    }
+    // 要確認シグナル(旧: 経営危険度スコア)
+    // 各ファクタは「判定に必要なデータが有るか(available)」「該当したか(hit)」を区別する。
+    // 校正済みの予測モデルではないため0-100スコアや「低/中/高」ラベルは付けない。
+    let mut signals: Vec<String> = Vec::new();
+    let mut available = 0u32;   // 判定できたファクタ数
+    let required = 4u32;        // 最低限ほしいファクタ: 純資産/営業損益/離職率/稼働率
+
+    if net_assets.is_some() { available += 1; }
+    if operating_income.is_some() { available += 1; }
+    if turnover_rate.is_some() { available += 1; }
+    if occupancy_rate.is_some() { available += 1; }
+
+    if net_assets == Some(0.0) {} // no-op(明示: 0は債務超過ではない)
+    if let Some(n) = net_assets { if n < 0.0 { signals.push("債務超過".to_string()); } }
+    if let Some(o) = operating_income { if o < 0.0 { signals.push("営業赤字".to_string()); } }
+    if let Some(t) = turnover_rate { if t > 0.25 { signals.push(format!("高離職率 {:.0}%", t * 100.0)); } }
+    if has_violation { signals.push("行政処分・指導歴".to_string()); }
+    if let Some(o) = occupancy_rate { if o < 0.5 { signals.push(format!("低稼働率 {:.0}%", o * 100.0)); } }
+
+    let has_financials = pl.is_some() || bs.is_some();
+    // 財務データが無い or 必要ファクタが1つも揃わない場合は算定不能(nullで返す)
+    let computable = has_financials && available > 0;
+    let signal_count: Value = if computable {
+        Value::from(signals.len())
+    } else {
+        Value::Null
+    };
+    let fiscal_period: Option<String> = pl
+        .and_then(|p| p["fiscal_period"].as_str())
+        .or_else(|| bs.and_then(|b| b["fiscal_period"].as_str()))
+        .map(|s| s.to_string());
+    let pl_bs_scope_matched = pl.is_some() && bs.is_some();
 
     json!({
-        "has_financials": pl.is_some() || bs.is_some(),
+        "has_financials": has_financials,
         "labor_productivity": labor_productivity,
         "revenue_per_user": revenue_per_user,
         "personnel_cost_ratio": personnel_cost_ratio,
         "operating_margin": operating_margin,
         "equity_ratio": equity_ratio,
-        "risk_score": risk_score,
-        "risk_factors": risk_factors,
+        // 要確認シグナル(検証済みスコアではない)
+        "signals": signals,
+        "signal_count": signal_count,
+        // カバレッジ(未知と安全の区別のため)
+        "coverage": {
+            "available_factors": available,
+            "required_factors": required,
+            "computable": computable,
+            "fiscal_period": fiscal_period,
+            "pl_bs_scope_matched": pl_bs_scope_matched,
+        },
     })
+}
+
+/// financials配列から、同一事業所番号かつ同一会計期間のPL/BSペアを選ぶ。
+/// スコープ(施設・年度)が一致する組が無ければ、BSは None(=自己資本比率等を出さない)。
+/// PL単独は許容する(収益・営業損益・人件費率はPLだけで完結するため)。
+fn pick_consistent_pl_bs(financials: &[Value]) -> (Option<&Value>, Option<&Value>) {
+    let pls: Vec<&Value> = financials.iter().filter(|f| f["doc_type"] == "PL").collect();
+    let bss: Vec<&Value> = financials.iter().filter(|f| f["doc_type"] == "BS").collect();
+
+    // PLごとに、同一事業所番号・同一会計期間のBSがあるか探す
+    for pl in &pls {
+        let pj = pl["jigyosho_number"].as_str();
+        let pf = pl["fiscal_period"].as_str();
+        for bs in &bss {
+            if bs["jigyosho_number"].as_str() == pj
+                && pf.is_some()
+                && bs["fiscal_period"].as_str() == pf
+            {
+                return (Some(pl), Some(bs));
+            }
+        }
+    }
+    // スコープ一致ペアなし: PL単独(あれば)を返す。BSは混ぜない。
+    (pls.first().copied(), None)
 }
 
 /// 財務DL列の相対パスを介護情報公表システムの絶対URLに変換する
@@ -2165,6 +2218,27 @@ fn sql_real_violation(col: &str) -> String {
           AND TRIM(\"{c}\") NOT IN ('無', 'ない', '無い'))",
         c = col
     )
+}
+
+/// 財務データのカバレッジ集計(レビュー⑤対応)
+/// スクリーニング対象が全国全数ではなく「取得済み」に限られることを数値で示す。
+pub async fn financial_coverage(db: &Database) -> Result<Value, AppError> {
+    let conn = get_conn(db).await?;
+    let sql = "SELECT
+        (SELECT COUNT(DISTINCT \"法人番号\") FROM facilities WHERE COALESCE(\"法人番号\",'') != '') AS total_corps,
+        (SELECT COUNT(DISTINCT \"法人番号\") FROM facilities WHERE COALESCE(\"法人番号\",'') != '' AND COALESCE(\"財務DL_事業活動計算書\",'') != '') AS pdf_corps,
+        (SELECT COUNT(DISTINCT corp_number) FROM financials WHERE corp_number IS NOT NULL) AS extracted_corps";
+    let row = query_single_row_params(&conn, sql, vec![]).await?;
+    let total = row_i64(&row, 0);
+    let pdf = row_i64(&row, 1);
+    let extracted = row_i64(&row, 2);
+    Ok(json!({
+        "total_corps": total,
+        "pdf_corps": pdf,          // 財務PDFリンクを保有する法人数
+        "extracted_corps": extracted, // 財務数値をAI抽出済みの法人数(=財務フィルタが実効となる母集団)
+        "pdf_ratio": if total > 0 { pdf as f64 / total as f64 } else { 0.0 },
+        "extracted_ratio": if total > 0 { extracted as f64 / total as f64 } else { 0.0 },
+    }))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2537,36 +2611,29 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
         }));
     }
 
-    // 法人レベルのクロス指標: 抽出済み財務のうち代表レコード
-    // （売上最大のPL・総資産最大のBS = 法人全体決算である可能性が最も高いもの）を採用
+    // 法人レベルのクロス指標:
+    // レビュー指摘(2026-07-27)対応 —
+    // 旧実装は「売上最大PL」と「総資産最大BS」を独立に選び、別施設・別年度の
+    // PL/BSから自己資本比率を合成しうる問題があった。撤廃し、build_cross_metrics内の
+    // pick_consistent_pl_bs(同一施設×同一会計期間)に代表施設の選定を委ねる。
+    // 労働生産性・利用者単価は分子(代表施設売上)と分母(法人合算従業者)の粒度が
+    // 一致しないため、法人レベルでは渡さない(None → 出さない)。
     let extracted_financials = fetch_financials(&conn, "corp_number", corp_number).await;
-    let best_pl = extracted_financials
-        .iter()
-        .filter(|f| f["doc_type"] == "PL")
-        .max_by(|a, b| {
-            a["revenue"].as_f64().unwrap_or(0.0)
-                .partial_cmp(&b["revenue"].as_f64().unwrap_or(0.0))
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
-        .cloned();
-    let best_bs = extracted_financials
-        .iter()
-        .filter(|f| f["doc_type"] == "BS")
-        .max_by(|a, b| {
-            a["total_assets"].as_f64().unwrap_or(0.0)
-                .partial_cmp(&b["total_assets"].as_f64().unwrap_or(0.0))
-                .unwrap_or(std::cmp::Ordering::Equal)
-        })
-        .cloned();
-    let representative: Vec<Value> = best_pl.into_iter().chain(best_bs).collect();
     let corp_cross_metrics = build_cross_metrics(
-        &representative,
-        Some(total_staff).filter(|s| *s > 0.0),
-        None,
+        &extracted_financials,
+        None, // staff_total: 法人合算と代表施設売上は粒度不一致のため渡さない
+        None, // total_users: 同上
         avg_turnover,
         avg_occupancy,
         !violations.is_empty(),
     );
+    // 財務データ状態の件数(move前に確定)
+    let pdf_facility_count = financial_links.len();
+    let extracted_facility_count = extracted_financials
+        .iter()
+        .filter_map(|f| f["jigyosho_number"].as_str())
+        .collect::<std::collections::HashSet<_>>()
+        .len();
 
     Ok(json!({
         "corp_info": {
@@ -2603,6 +2670,9 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
             "accounting_type": accounting_type,
             "financial_links": financial_links,
             "extracted_financials": extracted_financials,
+            // レビュー④対応: 財務データの状態を明示
+            "pdf_facility_count": pdf_facility_count,
+            "extracted_facility_count": extracted_facility_count,
         },
         "cross_metrics": corp_cross_metrics,
         "risk_flags": risk_flags,

@@ -81,15 +81,17 @@ pub fn create_router(state: SharedState) -> Router {
         .merge(facilities::router())
         .merge(benchmark::router())
         .with_state(state.clone())
-        .layer(middleware::from_fn(|req, next| {
-            require_plan("standard", req, next)
+        .layer(middleware::from_fn_with_state(state.clone(), |st, req, next| {
+            require_plan("standard", st, req, next)
         }));
 
     // プロ以上: リストCSVエクスポート（月間クレジットはハンドラ内で制御）
     let pro_routes = Router::new()
         .merge(export::router())
         .with_state(state.clone())
-        .layer(middleware::from_fn(|req, next| require_plan("pro", req, next)));
+        .layer(middleware::from_fn_with_state(state.clone(), |st, req, next| {
+            require_plan("pro", st, req, next)
+        }));
 
     // M&Aプラン: スクリーニング・デューデリ・PMI
     let ma_routes = Router::new()
@@ -97,7 +99,9 @@ pub fn create_router(state: SharedState) -> Router {
         .merge(due_diligence::router())
         .merge(pmi::router())
         .with_state(state.clone())
-        .layer(middleware::from_fn(|req, next| require_plan("ma", req, next)));
+        .layer(middleware::from_fn_with_state(state.clone(), |st, req, next| {
+            require_plan("ma", st, req, next)
+        }));
 
     // 認証必須の認証系ルート（me, logout, refresh）+ 課金操作
     let protected_auth_routes = Router::new()
@@ -124,8 +128,8 @@ pub fn create_router(state: SharedState) -> Router {
     let external_routes = Router::new()
         .merge(external::router())
         .with_state(state.clone())
-        .layer(middleware::from_fn(|req, next| {
-            require_plan("standard", req, next)
+        .layer(middleware::from_fn_with_state(state.clone(), |st, req, next| {
+            require_plan("standard", st, req, next)
         }))
         .layer(middleware::from_fn(auth_middleware));
 

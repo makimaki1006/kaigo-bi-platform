@@ -60,20 +60,25 @@ def build_path(jigyosho: str, svc: str, doc_folder: str) -> str:
 
 
 def probe_one(path: str) -> bool:
-    """PDFが存在するか(200/206 かつ %PDF 先頭)を判定"""
+    """PDFが存在するか(200 かつ %PDF 先頭)を判定
+
+    注意: このサーバはRangeリクエストに「206だが本文空」で応答するため、
+    Range GETでは%PDF判定が全数外れる(実測で偽陰性38.7%)。
+    stream=Trueで先頭バイトだけ読み、Rangeは使わない。
+    """
     session = get_session()
     for attempt in range(3):
         try:
-            r = session.get(
-                BASE + path,
-                headers={"Range": "bytes=0-3"},
-                timeout=30,
-            )
-            if r.status_code in (200, 206):
-                return r.content[:4] == b"%PDF"
-            if r.status_code == 404:
-                return False
-            # 一時エラー(5xx等)はリトライ
+            r = session.get(BASE + path, timeout=30, stream=True)
+            try:
+                if r.status_code == 200:
+                    head = next(r.iter_content(chunk_size=4), b"")
+                    return head[:4] == b"%PDF"
+                if r.status_code == 404:
+                    return False
+                # 一時エラー(5xx等)はリトライ
+            finally:
+                r.close()
         except requests.RequestException:
             pass
         time.sleep(2 ** attempt)

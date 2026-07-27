@@ -2,20 +2,19 @@
 
 // ===================================================
 // クロス指標カード
-// 決算PDF由来の財務 × 公表データの複合指標を表示
-// 労働生産性 / 利用者単価 / 実人件費率 / 営業利益率 /
-// 自己資本比率 + 経営危険度スコア
+// 決算PDF由来の財務 × 公表データの複合指標
+// レビュー指摘(2026-07-27)反映:
+//  - 経営危険度スコア/低中高 → 「要確認シグナル」(検証済みモデルでないため点数化しない)
+//  - 未知と安全を区別: 算定不能時は「算定不能」と明示
+//  - PL/BSのスコープ(施設・決算期)一致状況を表示
 // ===================================================
 
 import type { CrossMetrics } from "@/lib/types";
 
 interface CrossMetricsCardProps {
   metrics: CrossMetrics;
-  /** M&A文脈では「売却期待度」として見せる等のラベル調整 */
-  riskLabel?: string;
 }
 
-/** 金額を読みやすく整形 */
 function formatYen(value: number | null): string {
   if (value == null) return "-";
   const abs = Math.abs(value);
@@ -30,13 +29,6 @@ function formatPct(value: number | null): string {
   return `${(value * 100).toFixed(1)}%`;
 }
 
-/** 危険度スコアの色 */
-function riskColor(score: number): { bar: string; text: string; label: string } {
-  if (score >= 60) return { bar: "bg-red-500", text: "text-red-600", label: "高" };
-  if (score >= 30) return { bar: "bg-amber-500", text: "text-amber-600", label: "中" };
-  return { bar: "bg-emerald-500", text: "text-emerald-600", label: "低" };
-}
-
 function MetricCell({ label, value, negative }: { label: string; value: string; negative?: boolean }) {
   return (
     <div className="p-3 bg-white rounded-lg border border-gray-100">
@@ -48,25 +40,40 @@ function MetricCell({ label, value, negative }: { label: string; value: string; 
   );
 }
 
-export default function CrossMetricsCard({ metrics, riskLabel = "経営危険度" }: CrossMetricsCardProps) {
+export default function CrossMetricsCard({ metrics }: CrossMetricsCardProps) {
   if (!metrics.has_financials) return null;
 
-  const risk = riskColor(metrics.risk_score);
+  const cov = metrics.coverage;
+  const signals = metrics.signals ?? [];
 
   return (
     <section className="border border-purple-100 bg-purple-50/30 rounded-xl p-4">
-      <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+      <div className="flex items-center justify-between mb-1 flex-wrap gap-2">
         <h4 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
           クロス指標
           <span className="text-[10px] font-normal text-purple-600 bg-purple-50 border border-purple-200 rounded px-1.5 py-0.5">
             財務 × 公表データ
           </span>
         </h4>
+        {cov?.fiscal_period && (
+          <span className="text-[11px] text-gray-400">決算期: {cov.fiscal_period}</span>
+        )}
       </div>
 
+      {/* スコープ注記(自己資本比率はPL/BS一致時のみ意味を持つ) */}
+      {!cov?.pl_bs_scope_matched && metrics.equity_ratio == null && (
+        <p className="text-[11px] text-gray-400 mb-2">
+          ※ 同一施設・同一決算期のPL/BSが揃わないため、自己資本比率は非表示です。
+        </p>
+      )}
+
       <div className="grid grid-cols-2 md:grid-cols-5 gap-2 mb-4">
-        <MetricCell label="労働生産性（1人あたり売上）" value={formatYen(metrics.labor_productivity)} />
-        <MetricCell label="利用者1人あたり収益" value={formatYen(metrics.revenue_per_user)} />
+        {metrics.labor_productivity != null && (
+          <MetricCell label="労働生産性（1人あたり売上）" value={formatYen(metrics.labor_productivity)} />
+        )}
+        {metrics.revenue_per_user != null && (
+          <MetricCell label="利用者1人あたり収益" value={formatYen(metrics.revenue_per_user)} />
+        )}
         <MetricCell
           label="実人件費率"
           value={formatPct(metrics.personnel_cost_ratio)}
@@ -77,39 +84,49 @@ export default function CrossMetricsCard({ metrics, riskLabel = "経営危険度
           value={formatPct(metrics.operating_margin)}
           negative={(metrics.operating_margin ?? 0) < 0}
         />
-        <MetricCell
-          label="自己資本比率"
-          value={formatPct(metrics.equity_ratio)}
-          negative={(metrics.equity_ratio ?? 0) < 0}
-        />
+        {metrics.equity_ratio != null && (
+          <MetricCell
+            label="自己資本比率"
+            value={formatPct(metrics.equity_ratio)}
+            negative={metrics.equity_ratio < 0}
+          />
+        )}
       </div>
 
-      {/* 経営危険度スコア */}
-      <div className="flex items-center gap-3">
-        <span className="text-xs text-gray-500 flex-shrink-0">{riskLabel}</span>
-        <div className="flex-1 h-2.5 bg-gray-100 rounded-full overflow-hidden">
-          <div
-            className={`h-full rounded-full ${risk.bar} transition-all`}
-            style={{ width: `${Math.min(100, metrics.risk_score)}%` }}
-          />
-        </div>
-        <span className={`text-sm font-bold tabular-nums ${risk.text}`}>
-          {metrics.risk_score}
-          <span className="text-[10px] font-normal ml-0.5">/100（{risk.label}）</span>
-        </span>
-      </div>
-      {metrics.risk_factors.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mt-2">
-          {metrics.risk_factors.map((factor) => (
-            <span
-              key={factor}
-              className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-red-50 text-red-600 border border-red-200"
-            >
-              {factor}
+      {/* 要確認シグナル(点数化しない) */}
+      <div className="border-t border-purple-100 pt-3">
+        <div className="flex items-center gap-2 mb-1.5">
+          <span className="text-xs font-medium text-gray-700">要確認シグナル</span>
+          {metrics.signal_count == null ? (
+            <span className="text-[11px] text-gray-400">算定に必要なデータが不足（判定不能）</span>
+          ) : (
+            <span className="text-[11px] text-gray-500">
+              該当 {metrics.signal_count} 件 / 判定できたファクタ {cov?.available_factors ?? 0} of {cov?.required_factors ?? 4}
             </span>
-          ))}
+          )}
         </div>
-      )}
+        {signals.length > 0 ? (
+          <div className="flex flex-wrap gap-1.5">
+            {signals.map((s) => (
+              <span
+                key={s}
+                className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium bg-red-50 text-red-600 border border-red-200"
+              >
+                {s}
+              </span>
+            ))}
+          </div>
+        ) : (
+          metrics.signal_count != null && (
+            <p className="text-[11px] text-gray-400">
+              取得できた範囲では該当シグナルなし（未取得のファクタは評価対象外）
+            </p>
+          )
+        )}
+        <p className="text-[10px] text-gray-400 mt-2">
+          ※ 要確認シグナルは公表・決算データからの機械的抽出であり、経営状態や売却意向を断定するものではありません。実査でのご確認を推奨します。
+        </p>
+      </div>
     </section>
   );
 }

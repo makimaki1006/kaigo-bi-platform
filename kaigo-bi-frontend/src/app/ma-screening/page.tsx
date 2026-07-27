@@ -293,6 +293,15 @@ function MaScreeningContent() {
     apiParams
   );
 
+  // 財務データのカバレッジ(レビュー⑤対応: 母集団の明示)
+  const { data: coverage } = useApi<{
+    total_corps: number;
+    pdf_corps: number;
+    extracted_corps: number;
+    pdf_ratio: number;
+    extracted_ratio: number;
+  }>("/api/ma/financial-coverage");
+
   // 候補リスト
   const items = data?.items ?? [];
   const total = data?.total ?? 0;
@@ -421,9 +430,14 @@ function MaScreeningContent() {
                     </label>
                   ))}
                 </div>
-                <p className="text-[10px] text-gray-400 mt-1.5">
-                  対象は決算データ取得済み法人（順次拡大中）
-                </p>
+                {coverage && (
+                  <p className="text-[10px] text-gray-500 mt-1.5">
+                    財務抽出済み: {coverage.extracted_corps.toLocaleString()}法人 / 全国{coverage.total_corps.toLocaleString()}法人
+                    （約{(coverage.extracted_ratio * 100).toFixed(coverage.extracted_ratio < 0.01 ? 2 : 1)}%）。
+                    財務フィルタの結果は抽出済み法人に限られ、全国比較ではありません。
+                    PDF取得済みは{coverage.pdf_corps.toLocaleString()}法人。
+                  </p>
+                )}
               </div>
 
               {/* 稼働率・品質スコア（プレースホルダー） */}

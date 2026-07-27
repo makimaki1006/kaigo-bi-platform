@@ -13,7 +13,19 @@ use crate::services::sql_aggregator;
 
 /// M&Aスクリーニングルーター
 pub fn router() -> Router<SharedState> {
-    Router::new().route("/api/ma/screening", get(get_ma_screening))
+    Router::new()
+        .route("/api/ma/screening", get(get_ma_screening))
+        .route("/api/ma/financial-coverage", get(get_financial_coverage))
+}
+
+/// GET /api/ma/financial-coverage
+/// 財務データのカバレッジ(母集団に対する取得済み割合)を返す。
+/// レビュー⑤対応: スクリーニングが全国全数ではなく取得済み法人に限られることを明示する。
+async fn get_financial_coverage(
+    State(state): State<SharedState>,
+) -> Result<Json<Value>, AppError> {
+    let result = sql_aggregator::financial_coverage(&state.db).await?;
+    Ok(Json(result))
 }
 
 /// M&Aスクリーニング用クエリパラメータ

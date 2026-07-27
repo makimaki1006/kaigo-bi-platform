@@ -10,7 +10,7 @@ import { Suspense, useMemo } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useApi } from "@/hooks/useApi";
-import type { CrossMetrics, FacilityRowExtended, FinancialRecord, StaffingBreakdown } from "@/lib/types";
+import type { CrossMetrics, FacilityRowExtended, FinancialRecord, FinancialStatus, StaffingBreakdown } from "@/lib/types";
 import FacilityDetailPanel from "@/components/data-display/FacilityDetailPanel";
 import FinancialSummaryCard from "@/components/data-display/FinancialSummaryCard";
 import CrossMetricsCard from "@/components/data-display/CrossMetricsCard";
@@ -40,11 +40,13 @@ function FacilityDetailContent() {
     facility: FacilityRowExtended;
     financials?: FinancialRecord[];
     cross_metrics?: CrossMetrics;
+    financial_status?: FinancialStatus;
   }>(id ? `/api/facilities/${id}` : null);
 
   const facility = useMemo(() => data?.facility ?? null, [data]);
   const financials = data?.financials ?? [];
   const crossMetrics = data?.cross_metrics ?? null;
+  const financialStatus = data?.financial_status ?? null;
   const hasViolation = facility?.sanction_detail != null || facility?.guidance_detail != null;
   const hasStaffing =
     facility?.staffing != null &&
@@ -108,11 +110,24 @@ function FacilityDetailContent() {
         </div>
       )}
 
-      {/* 財務サマリー（決算PDF抽出済みの場合のみ表示） */}
-      {financials.length > 0 && <FinancialSummaryCard records={financials} />}
-
-      {/* クロス指標（財務 × 公表データ） */}
-      {crossMetrics?.has_financials && <CrossMetricsCard metrics={crossMetrics} />}
+      {/* 財務データ: 状態別に表示（レビュー④対応 — 未表示の理由を区別する） */}
+      {financials.length > 0 ? (
+        <>
+          <FinancialSummaryCard records={financials} />
+          {crossMetrics?.has_financials && <CrossMetricsCard metrics={crossMetrics} />}
+        </>
+      ) : financialStatus === "pdf_available" ? (
+        <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl text-sm text-indigo-800">
+          この施設は決算諸表のPDFを公表していますが、財務数値のAI抽出は未実施です（順次拡大中）。
+          <span className="block text-xs text-indigo-500 mt-1">
+            PDFリンクは下部「財務諸表」からご確認いただけます。
+          </span>
+        </div>
+      ) : financialStatus === "not_published" ? (
+        <div className="p-4 bg-gray-50 border border-gray-200 rounded-xl text-sm text-gray-500">
+          公表システム上に財務諸表PDFは確認できませんでした（未公表、または外部URLでの提出の可能性があります）。
+        </div>
+      ) : null}
 
       {/* 詳細パネル（既存コンポーネントを全画面利用） */}
       <FacilityDetailPanel

@@ -173,9 +173,16 @@ function CorpDetailContent() {
             </ChartCard>
           )}
 
-          {/* 法人クロス指標（財務 × 公表データ、M&A文脈） */}
+          {/* 法人クロス指標（財務 × 公表データ）。代表施設の決算に基づく */}
           {report.cross_metrics?.has_financials && (
-            <CrossMetricsCard metrics={report.cross_metrics} riskLabel="経営危険度（売却期待度）" />
+            <div className="space-y-1">
+              {report.cross_metrics.coverage?.fiscal_period && (
+                <p className="text-[11px] text-gray-400">
+                  ※ 法人内で決算データを取得できた代表施設の値です（法人全体の連結ではありません）。
+                </p>
+              )}
+              <CrossMetricsCard metrics={report.cross_metrics} />
+            </div>
           )}
 
           {/* 法人人員サマリー */}
@@ -259,7 +266,8 @@ function CorpDetailContent() {
               </div>
             ) : (
               <p className="text-sm text-gray-400 py-6 text-center">
-                この法人の施設は財務諸表をまだ公表していません
+                この法人の施設で、公表システム上に財務諸表PDFは確認できませんでした
+                （未公表、または外部URLでの提出の可能性があります）。
               </p>
             )}
           </ChartCard>
