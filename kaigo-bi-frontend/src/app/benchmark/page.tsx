@@ -68,13 +68,23 @@ function BenchmarkContent() {
   }, []);
 
   // レーダーチャート用データ整形
+  // 各軸を「全国平均=100」の指数へ正規化する。
+  // 生値のままだと従業者数(≈20)・定員(≈50)が支配し、比率系(定着率0.8等)が
+  // 中心に潰れて系列が描画されないように見えていた。全国平均は母集団に依存せず
+  // 固定なので、指数は検索条件で変動しない絶対基準になる。
   const radarData = useMemo(() => {
     if (!benchmarkData?.radar) return [];
+    const index = (v: number, base: number) =>
+      base && base !== 0 ? Math.round((v / base) * 1000) / 10 : 0;
     return benchmarkData.radar.map((item) => ({
       axis: item.axis,
-      value: item.value,
-      national_avg: item.national_avg,
-      pref_avg: item.pref_avg,
+      value: index(item.value, item.national_avg),
+      national_avg: 100,
+      pref_avg: index(item.pref_avg, item.national_avg),
+      // ツールチップ用に生値も保持
+      _raw_value: item.value,
+      _raw_pref: item.pref_avg,
+      _raw_national: item.national_avg,
     }));
   }, [benchmarkData]);
 
@@ -171,7 +181,7 @@ function BenchmarkContent() {
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <ChartCard
               title="8軸ベンチマークレーダー"
-              subtitle="対象施設 vs 全国平均"
+              subtitle="各軸=全国平均を100とした指数（100超で全国平均より良い）"
             >
               {radarData.length > 0 ? (
                 <RadarChart
