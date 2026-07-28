@@ -1423,16 +1423,16 @@ pub async fn corp_group_top_corps(db: &Database, params: &FilterParams, limit: u
 
     let sql = format!(
         "SELECT
-            COALESCE(\"法人名\", '') as corp_name,
+            MAX(COALESCE(\"法人名\", '')) as corp_name,
             \"法人番号\" as corp_number,
-            corp_type,
+            MAX(corp_type) as corp_type,
             COUNT(*) as facility_count,
             SUM(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL)) as total_staff,
             AVG(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END) as avg_turnover,
             GROUP_CONCAT(DISTINCT prefecture) as prefectures,
             GROUP_CONCAT(DISTINCT \"サービス名\") as service_names
         FROM facilities {}
-        GROUP BY \"法人番号\", \"法人名\"
+        GROUP BY \"法人番号\"
         ORDER BY facility_count DESC
         LIMIT ?{}",
         corp_filter, limit_idx
@@ -2337,9 +2337,9 @@ pub async fn ma_screening(
 
     let sql = format!(
         "SELECT
-            COALESCE(\"法人名\", '') as corp_name,
+            MAX(COALESCE(\"法人名\", '')) as corp_name,
             \"法人番号\" as corp_number,
-            corp_type,
+            MAX(corp_type) as corp_type,
             COUNT(*) as facility_count,
             SUM(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL)) as total_staff,
             AVG(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END) as avg_turnover,
@@ -2351,7 +2351,7 @@ pub async fn ma_screening(
             MAX(CASE WHEN EXISTS (SELECT 1 FROM financials fin WHERE fin.corp_number = facilities.\"法人番号\" AND fin.doc_type = 'PL' AND fin.operating_income < 0) THEN 1 ELSE 0 END) as has_operating_loss,
             {} as has_violation
         FROM facilities {}
-        GROUP BY \"法人番号\", \"法人名\"
+        GROUP BY \"法人番号\"
         {}
         ORDER BY facility_count DESC, total_staff DESC
         LIMIT ?{}",
@@ -2442,7 +2442,7 @@ pub async fn dd_search(db: &Database, params: &FilterParams, query: &str) -> Res
             COUNT(*) as facility_count,
             SUM(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL)) as total_staff
         FROM facilities {}
-        GROUP BY \"法人番号\", \"法人名\"
+        GROUP BY \"法人番号\"
         ORDER BY facility_count DESC
         LIMIT 50",
         where_clause
