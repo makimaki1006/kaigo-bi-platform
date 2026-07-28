@@ -71,20 +71,21 @@ export const SERVICE_TYPES: Record<string, string> = {
 };
 
 /** 法人種別リスト */
+// DBの corp_type 列に実際に格納されている値と一致させること。
+// 値は scripts/turso_helpers.py の classify_corp_type / _CORP_TYPE_MAPPING が生成する。
+// ここがズレると WHERE corp_type IN (...) が0件になる（例: 「株式会社」単体はDBに無く
+// 「株式会社・有限会社等」で格納されている）。
 export const CORP_TYPES: string[] = [
   "社会福祉法人",
   "医療法人",
-  "株式会社",
-  "有限会社",
-  "合同会社",
+  "社会医療法人",
+  "株式会社・有限会社等",
   "NPO法人",
-  "一般社団法人",
-  "一般財団法人",
-  "公益社団法人",
-  "公益財団法人",
+  "社団法人",
+  "財団法人",
   "地方公共団体",
-  "社会福祉協議会",
-  "その他",
+  "その他法人",
+  "不明",
 ];
 
 /** テーブルのデフォルトページサイズ */

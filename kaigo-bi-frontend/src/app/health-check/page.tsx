@@ -100,7 +100,9 @@ function HealthCheckContent() {
   // 施設検索API
   const { data: searchResult, error: searchError, isLoading: searchLoading } = useApi<FacilitySearchResult>(
     debouncedQuery.length >= 2 ? "/api/facilities/search" : null,
-    { keyword: debouncedQuery, per_page: 10 }
+    // バックエンド SearchParams のテキスト検索キーは `q`。以前は `keyword` を送っており
+    // 常に無視され、入力に関わらず同じ候補が返っていた。
+    { q: debouncedQuery, per_page: 10 }
   );
 
   // 業界平均KPI（ベンチマーク用）

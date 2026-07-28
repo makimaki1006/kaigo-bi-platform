@@ -33,6 +33,9 @@
 | market: 介護需要トレンドがくし状(利用者数が0→260万を反復) | 同上（全都道府県×年を時系列に混入） | 年ごとに全国合計へ集約 |
 | M&Aスクリーニング: ファネル「全法人」が表示件数(LIMIT後)と同値 | funnel の count に items.len() を使用 | 全国ユニーク法人数を別クエリで取得し funnel/total_corps に反映 |
 | dashboard: サービス種別概要「総従業者数」全行「-」 | API が avg_staff のみ返し、フロントは total_staff を参照 | dashboard_by_service に `SUM(従業者_合計) as total_staff` を追加 |
+| M&A: 同一法人が表記ゆれで別行に分裂（社会福祉法人北養会／社会福祉法人　北養会） | GROUP BY が「法人番号+法人名」で全角スペース違いが別グループ化 | ma_screening・corp_group_top_corps を GROUP BY「法人番号」単独へ。表示名/種別はMAX集約（番号一致時のみ統合＝誤結合なし） |
+| 法人グループ分析: 群馬県×株式会社で0件（法人種別フィルタが常に0件） | フロントの CORP_TYPES が「株式会社」等を提示するがDBは全て「株式会社・有限会社等」で格納。値不一致で `corp_type IN(...)` が空振り | constants.ts の CORP_TYPES をDB実値(classify_corp_type出力)へ修正。corpTypesフィルタを使う全ページに波及 |
+| 施設ヘルスチェック: 何を検索しても候補が同じ | フロントが検索語を `keyword` で送信、backend SearchParams のキーは `q`。常に無視され既定結果が返っていた | health-check の送信キーを `q` に修正（benchmark等は既に `q` で正しい） |
 
 ## 🕙 朝に判断が必要（設計判断を伴う・推測で直すべきでない）
 
