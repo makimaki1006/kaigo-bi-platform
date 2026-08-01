@@ -52,7 +52,10 @@ export function useAuth(): AuthState {
 
     // /api/auth/me でユーザー情報を取得
     // バックエンドは { user: {...} } 形式で返す
-    apiRequest<{ user: User }>("/api/auth/me", { method: "GET" })
+    apiRequest<{ user: User }>("/api/auth/me", {
+      method: "GET",
+      redirectOn401: false,
+    })
       .then((data) => {
         setUser(data.user);
       })
@@ -62,14 +65,14 @@ export function useAuth(): AuthState {
           try {
             const refreshResult = await apiRequest<{ token: string }>(
               "/api/auth/refresh",
-              { method: "POST" }
+              { method: "POST", redirectOn401: false }
             );
             // 新しいトークンを保存
             setAuthToken(refreshResult.token);
             // リフレッシュ後に再度ユーザー情報を取得
             const meResult = await apiRequest<{ user: User }>(
               "/api/auth/me",
-              { method: "GET" }
+              { method: "GET", redirectOn401: false }
             );
             setUser(meResult.user);
             return;

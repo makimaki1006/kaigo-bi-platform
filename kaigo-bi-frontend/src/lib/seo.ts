@@ -21,6 +21,7 @@
 
 import type { Metadata } from "next";
 import { absoluteUrl } from "@/lib/site";
+import { SEO_CONTENT_APPROVED } from "@/lib/site";
 
 interface PublicMetadataInput {
   /** サイト内の絶対パス（例: "/pricing"）。canonical/OG URLの基準になる */
@@ -50,8 +51,8 @@ export function buildPublicMetadata({
       canonical: url,
     },
     robots: {
-      index: true,
-      follow: true,
+      index: SEO_CONTENT_APPROVED,
+      follow: SEO_CONTENT_APPROVED,
     },
     openGraph: {
       title,

@@ -28,9 +28,19 @@ export const SITE_URL: string = normalizeBaseUrl(
 
 /**
  * 本番ビルドで `NEXT_PUBLIC_SITE_URL` 未設定を検知するためのフラグ。
- * true の場合、canonical/OG が localhost を指すため本番前に設定が必要。
+ * true の場合、環境に応じたfallback URLを使用している。
+ * 独自ドメインへ移行した本番ではfalseになるよう環境変数を設定する。
  */
 export const IS_SITE_URL_FALLBACK: boolean = !process.env.NEXT_PUBLIC_SITE_URL;
+
+/**
+ * 公開SEOページのインデックス制御。
+ *
+ * 公開コピーは2026-08-01に承認済みのため、通常はindex対象とする。
+ * 緊急時や検証環境で明示的に"false"を設定した場合だけnoindexへ戻す。
+ */
+export const SEO_CONTENT_APPROVED: boolean =
+  process.env.NEXT_PUBLIC_SEO_CONTENT_APPROVED !== "false";
 
 /** 末尾スラッシュを除去して基準URLを正規化する */
 function normalizeBaseUrl(url: string): string {

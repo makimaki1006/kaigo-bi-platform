@@ -8,6 +8,8 @@ import { SITE_URL } from "@/lib/site";
 
 // ブランド表記は "kaigo-bi" に統一（旧「介護BI - 戦略コンサルティング」は使わない）。
 const SITE_NAME = "kaigo-bi";
+const GOOGLE_SITE_VERIFICATION =
+  process.env.NEXT_PUBLIC_GOOGLE_SITE_VERIFICATION?.trim();
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -20,6 +22,11 @@ export const metadata: Metadata = {
   description:
     "全国の介護事業所の公開情報をもとに、市場・人材・品質・法人情報を分析できるBIサービス。経営支援・営業支援・M&A支援に対応。",
   applicationName: SITE_NAME,
+  // Search ConsoleのHTMLタグ方式を使う場合のみ出力する。
+  // NEXT_PUBLIC_GOOGLE_SITE_VERIFICATIONにはcontent属性の値だけを設定する。
+  ...(GOOGLE_SITE_VERIFICATION
+    ? { verification: { google: GOOGLE_SITE_VERIFICATION } }
+    : {}),
   // 既定は noindex。アプリ画面・認証系ページを検索対象外にする。
   // 公開SEOページは buildPublicMetadata() で robots.index を true に上書きする。
   robots: {

@@ -9,10 +9,12 @@
 // ===================================================
 
 import type { MetadataRoute } from "next";
-import { absoluteUrl } from "@/lib/site";
+import { absoluteUrl, SEO_CONTENT_APPROVED } from "@/lib/site";
 import { PUBLIC_SEO_PATHS } from "@/lib/public-paths";
 
 export default function sitemap(): MetadataRoute.Sitemap {
+  if (!SEO_CONTENT_APPROVED) return [];
+
   return PUBLIC_SEO_PATHS.map((path) => ({
     url: absoluteUrl(path),
   }));

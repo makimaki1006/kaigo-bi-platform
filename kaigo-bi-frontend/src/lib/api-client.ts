@@ -99,9 +99,20 @@ export async function apiRequest<T>(
     method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
     body?: unknown;
     skipAuth?: boolean;
+    /**
+     * 401時に/loginへ強制遷移するか。
+     * 認証状態の初期確認（/auth/me・/auth/refresh）ではfalseにし、
+     * 未ログインを正常な状態として呼び出し側で処理する。
+     */
+    redirectOn401?: boolean;
   } = {}
 ): Promise<T> {
-  const { method = "POST", body, skipAuth = false } = options;
+  const {
+    method = "POST",
+    body,
+    skipAuth = false,
+    redirectOn401 = true,
+  } = options;
 
   const url = endpoint.startsWith("http")
     ? endpoint
@@ -128,7 +139,11 @@ export async function apiRequest<T>(
   // 401の場合はログインページにリダイレクト
   if (response.status === 401 && !skipAuth) {
     removeAuthToken();
-    if (typeof window !== "undefined" && !window.location.pathname.startsWith("/login")) {
+    if (
+      redirectOn401 &&
+      typeof window !== "undefined" &&
+      !window.location.pathname.startsWith("/login")
+    ) {
       window.location.href = "/login";
     }
     throw new ApiError(401, "認証が必要です。ログインしてください。");
