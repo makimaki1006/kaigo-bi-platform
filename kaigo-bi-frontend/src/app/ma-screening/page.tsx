@@ -363,7 +363,7 @@ function MaScreeningContent() {
       <div>
         <h1 className="text-xl font-bold text-gray-900">M&Aスクリーニング</h1>
         <p className="text-sm text-gray-500 mt-1">
-          多段階フィルタで買収候補法人を体系的にスクリーニング。魅力度スコアによるランキング。
+          多段階フィルタで買収候補法人を体系的にスクリーニング。M&A観点・営業観点の絶対基準スコアでランキング。
         </p>
       </div>
 
@@ -632,68 +632,55 @@ function MaScreeningContent() {
             )}
           </ChartCard>
 
-          {/* 魅力度スコア算出基準 */}
+          {/* スコアの算出基準 */}
           <ChartCard
-            title="魅力度スコア算出基準"
-            subtitle="4カテゴリの加重平均で0-100点をスコアリング"
+            title="スコアの算出基準"
+            subtitle="固定しきい値の加点のみ。表示中の母集団が変わっても各法人の点数は変わりません"
           >
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {[
-                {
-                  category: "改善余地",
-                  weight: "30%",
-                  items: ["(1-稼働率)の大きさ", "未取得加算の数", "離職率の高さ"],
-                  color: "bg-orange-50 border-orange-200",
-                  textColor: "text-orange-700",
-                },
-                {
-                  category: "市場ポテンシャル",
-                  weight: "30%",
-                  items: ["需給ギャップ", "高齢化率", "人口動態"],
-                  color: "bg-blue-50 border-blue-200",
-                  textColor: "text-blue-700",
-                },
-                {
-                  category: "事業基盤",
-                  weight: "20%",
-                  items: ["事業年数", "従業者規模", "サービス多角化"],
-                  color: "bg-green-50 border-green-200",
-                  textColor: "text-green-700",
-                },
-                {
-                  category: "リスク調整",
-                  weight: "20%",
-                  items: ["行政処分なし", "BCP策定", "保険加入"],
-                  color: "bg-purple-50 border-purple-200",
-                  textColor: "text-purple-700",
-                },
-              ].map((cat) => (
-                <div
-                  key={cat.category}
-                  className={`rounded-lg border p-4 ${cat.color}`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <h4 className={`text-sm font-semibold ${cat.textColor}`}>
-                      {cat.category}
-                    </h4>
-                    <span className="text-xs font-medium text-gray-500">
-                      ウェイト: {cat.weight}
-                    </span>
-                  </div>
-                  <ul className="space-y-1">
-                    {cat.items.map((item) => (
-                      <li
-                        key={item}
-                        className="text-xs text-gray-600 flex items-center gap-1.5"
-                      >
-                        <span className="w-1 h-1 rounded-full bg-gray-400 flex-shrink-0" />
-                        {item}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ))}
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-200 bg-gray-50/50">
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">
+                      指標
+                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-500">
+                      しきい値
+                    </th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">
+                      M&A観点
+                    </th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-500">
+                      営業観点
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    ["施設数", "10以上 / 3〜9 / 1〜2", "30 / 20 / 10", "40 / 25 / 10"],
+                    ["従業者数", "200以上 / 50〜199 / 50未満", "25 / 15 / 5", "25 / 15 / 5"],
+                    ["展開都道府県数", "3以上 / 2 / 1", "—", "25 / 15 / 5"],
+                    ["決算データあり", "あり", "15", "—"],
+                    ["債務超過・営業赤字なし", "どちらもなし", "20", "—"],
+                    ["行政処分・指導なし", "なし", "10", "10"],
+                  ].map(([label, cond, ma, sales], i) => (
+                    <tr key={label} className={i % 2 === 0 ? "bg-white" : "bg-gray-50/40"}>
+                      <td className="px-3 py-2 font-medium text-gray-800">{label}</td>
+                      <td className="px-3 py-2 text-gray-600">{cond}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-gray-700">{ma}</td>
+                      <td className="px-3 py-2 text-right tabular-nums text-gray-700">{sales}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
+            <p className="mt-3 text-xs text-gray-500">
+              規模バッジは 施設数10以上 または 従業者200以上 =
+              <span className="font-semibold">大</span>、 施設数3以上 または 従業者50以上 =
+              <span className="font-semibold">中</span>、それ以外 =
+              <span className="font-semibold">小</span>。
+              いずれも偏差値ではないため、検索条件を変えても同じ法人は同じ点数になります。
+            </p>
           </ChartCard>
         </div>
       </div>

@@ -15,13 +15,72 @@ const MAX_CAPACITY_FILTER: u32 = 500;
 /// 賃金の月額として妥当と見なすレンジ（円）。
 /// 実データには 0 円や 5,019 万円といった明らかな誤入力・年額混入が含まれるため、
 /// 集計前にこのレンジで足切りする。
-const SALARY_MIN: u32 = 100_000;
-const SALARY_MAX: u32 = 1_000_000;
+/// 値は scripts/aggregate_to_cache.py（kpi_cache を作る側）と揃えている。
+/// 揃えないと、キャッシュを返す既定表示とフィルタ適用時とで数字が食い違う。
+const SALARY_MIN: u32 = 10_000;
+const SALARY_MAX: u32 = 2_000_000;
 
-/// 賃金の代表値を取り出す SQL 式。
+/// 賃金の生値を数値（円）にする SQL 式を組み立てる。
+///
+/// 実データは表記が揃っておらず、`250000` のほかに `250,000` `25万` `25万円` が混在する。
+/// 素の CAST では `250,000` が 250、`25万円` が 25 になり、いずれもレンジ外として
+/// 捨てられていた（実測で 12,835 件の生値のうち妥当と判定できたのは 5,870 件）。
+fn salary_value(col: &str) -> String {
+    // カンマ・円を除き、全角数字を半角へ寄せた文字列を作る。
+    // 全角のまま CAST すると 0 になるため、ETL 側（safe_float）と同様に正規化する。
+    let mut cleaned = format!("NULLIF(\"{}\", '')", col);
+    for (from, to) in [
+        (",", ""), ("，", ""), ("円", ""), (" ", ""), ("　", ""),
+        ("０", "0"), ("１", "1"), ("２", "2"), ("３", "3"), ("４", "4"),
+        ("５", "5"), ("６", "6"), ("７", "7"), ("８", "8"), ("９", "9"),
+        ("．", "."),
+    ] {
+        cleaned = format!("REPLACE({}, '{}', '{}')", cleaned, from, to);
+    }
+    format!(
+        "CASE WHEN {c} LIKE '%万%' \
+              THEN CAST(REPLACE({c}, '万', '') AS REAL) * 10000 \
+              ELSE CAST({c} AS REAL) END",
+        c = cleaned
+    )
+}
+
+/// 賃金の代表値を取り出す SQL 式（1職種目）。
 /// `salary_representative` というカラムは存在せず、実データは 賃金_月額1〜5。
-/// 代表値には第1職種の月額を使う。
 const SALARY_EXPR: &str = "CAST(NULLIF(\"賃金_月額1\", '') AS REAL)";
+
+/// 賃金_月額1〜5 を縦持ちに展開するサブクエリを組み立てる。
+/// ETL 側も5職種すべてを対象にしているため、1職種目だけでは件数が半分以下になる。
+fn salary_unpivot(where_clause: &str) -> String {
+    (1..=5)
+        .map(|i| {
+            format!(
+                "SELECT {} AS v FROM facilities {}",
+                salary_value(&format!("賃金_月額{}", i)),
+                where_clause
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" UNION ALL ")
+}
+
+/// 職種名と月額のペアを縦持ちに展開するサブクエリ。
+fn salary_job_unpivot(where_clause: &str) -> String {
+    (1..=5)
+        .map(|i| {
+            format!(
+                "SELECT \"賃金_職種{i}\" AS job, \
+                        CAST(NULLIF(\"賃金_月額{i}\", '') AS REAL) AS v, \
+                        CAST(NULLIF(\"賃金_平均年齢{i}\", '') AS REAL) AS age, \
+                        CAST(NULLIF(\"賃金_平均勤続{i}\", '') AS REAL) AS tenure \
+                 FROM facilities {wc}",
+                i = i,
+                wc = where_clause
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" UNION ALL ")
+}
 
 /// WHERE句とパラメータを構築するヘルパー（パラメタライズドクエリ対応）
 struct WhereBuilder {
@@ -1082,16 +1141,16 @@ pub async fn salary_kpi(db: &Database, params: &FilterParams) -> Result<Value, A
     // 落とすと約 2,600 件になる。母数を伏せると誤読されるので sample_count も返す。
     let sql = format!(
         "SELECT
-            AVG({sal}) as avg_salary,
+            AVG(v) as avg_salary,
             NULL as median_salary,
-            MAX({sal}) as max_salary,
-            MIN({sal}) as min_salary,
-            COUNT({sal}) as sample_count,
+            MAX(v) as max_salary,
+            MIN(v) as min_salary,
+            COUNT(v) as sample_count,
             (SELECT COUNT(*) FROM facilities {wc}) as population_count
-        FROM facilities {wc} {j} {sal} BETWEEN {lo} AND {hi}",
-        sal = SALARY_EXPR,
+        FROM ({unpivot})
+        WHERE v BETWEEN {lo} AND {hi}",
+        unpivot = salary_unpivot(&where_clause),
         wc = where_clause,
-        j = if where_clause.is_empty() { "WHERE" } else { "AND" },
         lo = SALARY_MIN,
         hi = SALARY_MAX
     );
@@ -1119,26 +1178,15 @@ pub async fn salary_by_job_type(db: &Database, params: &FilterParams) -> Result<
     // ただし職種名は自由記述で、上位でも数十件しかない点に注意（count を併せて返す）。
     let w = WhereBuilder::from_filter_params(params);
     let where_clause = w.to_where_clause();
-    let extra_cond = format!(
-        "{sal} BETWEEN {lo} AND {hi} AND COALESCE(\"賃金_職種1\", '') != ''",
-        sal = SALARY_EXPR,
+    let sql = format!(
+        "SELECT job, AVG(v) as avg_salary, COUNT(*) as cnt, \
+                AVG(age) as avg_age, AVG(tenure) as avg_tenure \
+         FROM ({unpivot}) \
+         WHERE v BETWEEN {lo} AND {hi} AND COALESCE(job, '') != '' \
+         GROUP BY job ORDER BY cnt DESC",
+        unpivot = salary_job_unpivot(&where_clause),
         lo = SALARY_MIN,
         hi = SALARY_MAX
-    );
-
-    let sql = build_grouped_query(
-        &["\"賃金_職種1\""],
-        &[
-            &format!("AVG({}) as avg_salary", SALARY_EXPR),
-            "COUNT(*) as cnt",
-            // 画面が avg_age / avg_tenure を読むが返していなかった（常に非表示だった）
-            "AVG(CAST(NULLIF(\"賃金_平均年齢1\", '') AS REAL)) as avg_age",
-            "AVG(CAST(NULLIF(\"賃金_平均勤続1\", '') AS REAL)) as avg_tenure",
-        ],
-        &where_clause,
-        &extra_cond,
-        "\"賃金_職種1\"",
-        "cnt DESC",
     );
 
     let conn = get_conn(db).await?;
@@ -1161,23 +1209,26 @@ pub async fn salary_by_job_type(db: &Database, params: &FilterParams) -> Result<
 pub async fn salary_by_prefecture(db: &Database, params: &FilterParams) -> Result<Value, AppError> {
     let w = WhereBuilder::from_filter_params(params);
     let where_clause = w.to_where_clause();
-    let extra_cond = format!(
-        "{sal} BETWEEN {lo} AND {hi} AND prefecture IS NOT NULL AND prefecture != ''",
-        sal = SALARY_EXPR,
+    // 賃金_月額1〜5 を縦持ちにして都道府県ごとに集計する
+    let unpivot = (1..=5)
+        .map(|i| {
+            format!(
+                "SELECT prefecture, CAST(NULLIF(\"賃金_月額{}\", '') AS REAL) AS v \
+                 FROM facilities {}",
+                i, where_clause
+            )
+        })
+        .collect::<Vec<_>>()
+        .join(" UNION ALL ");
+
+    let sql = format!(
+        "SELECT prefecture, AVG(v) as avg_salary, COUNT(*) as cnt \
+         FROM ({unpivot}) \
+         WHERE v BETWEEN {lo} AND {hi} AND prefecture IS NOT NULL AND prefecture != '' \
+         GROUP BY prefecture ORDER BY avg_salary DESC",
+        unpivot = unpivot,
         lo = SALARY_MIN,
         hi = SALARY_MAX
-    );
-
-    let sql = build_grouped_query(
-        &["prefecture"],
-        &[
-            &format!("AVG({}) as avg_salary", SALARY_EXPR),
-            "COUNT(*) as cnt",
-        ],
-        &where_clause,
-        &extra_cond,
-        "prefecture",
-        "avg_salary DESC",
     );
 
     let conn = get_conn(db).await?;
@@ -1780,6 +1831,42 @@ pub async fn meta(db: &Database) -> Result<Value, AppError> {
 /// クエリ構文の記号を素通しすると MATCH がエラーになるので、内部の `"` を潰して囲む。
 fn fts_quote(q: &str) -> String {
     format!("\"{}\"", q.replace('"', " "))
+}
+
+/// 指定テーブルが存在するかを1度だけ調べる（呼び出し側で結果を保持する）
+async fn table_exists(db: &Database, name: &str) -> bool {
+    if let Ok(conn) = get_conn(db).await {
+        if let Ok(mut rows) = conn
+            .query(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?1",
+                vec![libsql::Value::Text(name.to_string())],
+            )
+            .await
+        {
+            return matches!(rows.next().await, Ok(Some(_)));
+        }
+    }
+    false
+}
+
+/// corp_summary（法人単位の事前集計）が使えるか。
+async fn corp_summary_available(db: &Database) -> bool {
+    use std::sync::atomic::{AtomicU8, Ordering};
+    static STATE: AtomicU8 = AtomicU8::new(0);
+    match STATE.load(Ordering::Relaxed) {
+        1 => return true,
+        2 => return false,
+        _ => {}
+    }
+    let ok = table_exists(db, "corp_summary").await;
+    STATE.store(if ok { 1 } else { 2 }, Ordering::Relaxed);
+    if !ok {
+        tracing::warn!(
+            "corp_summary が見つかりません。M&Aスクリーニングは低速な都度集計にフォールバックします。\
+             scripts/build_corp_summary.py --build で作成してください"
+        );
+    }
+    ok
 }
 
 /// facilities_fts が使えるか。結果はプロセス内で1度だけ判定して保持する。
@@ -2600,6 +2687,63 @@ pub async fn ma_screening(
     only_with_violations: bool,
     limit: usize,
 ) -> Result<Value, AppError> {
+    // 事前集計テーブル corp_summary から引く。
+    // facilities を都度 GROUP BY すると 223,103行 / 190,003法人の集約になり、
+    // ORDER BY facility_count DESC のため LIMIT も効かず実測 115 秒かかっていた。
+    // corp_summary は施設データ更新時にのみ作り直す（scripts/build_corp_summary.py）。
+    let use_summary = corp_summary_available(db).await;
+
+    // corp_summary はカラム名が facilities と異なるため WhereBuilder を使わず自前で組む
+    let mut conds: Vec<String> = Vec::new();
+    let mut base_params: Vec<libsql::Value> = Vec::new();
+    let mut pc = 0usize;
+
+    if use_summary {
+        // 都道府県・法人種別は FilterParams 側（画面が送るのはこちら）と
+        // 独立クエリパラメータ側の両方を受ける
+        let pref_src = params
+            .prefecture
+            .as_deref()
+            .or(prefectures.as_deref());
+        if let Some(pref) = pref_src {
+            let list: Vec<&str> = pref.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+            if !list.is_empty() {
+                let mut ors = Vec::new();
+                for p in list {
+                    pc += 1;
+                    base_params.push(libsql::Value::Text(format!("%{}%", p)));
+                    ors.push(format!("prefectures LIKE ?{}", pc));
+                }
+                conds.push(format!("({})", ors.join(" OR ")));
+            }
+        }
+        let ct_src = params.corp_type.as_deref().or(corp_types.as_deref());
+        if let Some(ct) = ct_src {
+            let list: Vec<&str> = ct.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+            if !list.is_empty() {
+                let mut ors = Vec::new();
+                for c in list {
+                    pc += 1;
+                    base_params.push(libsql::Value::Text(c.to_string()));
+                    ors.push(format!("corp_type = ?{}", pc));
+                }
+                conds.push(format!("({})", ors.join(" OR ")));
+            }
+        }
+        if let Some(ref sc) = params.service_code {
+            let list: Vec<&str> = sc.split(',').map(str::trim).filter(|s| !s.is_empty()).collect();
+            if !list.is_empty() {
+                let mut ors = Vec::new();
+                for c in list {
+                    pc += 1;
+                    base_params.push(libsql::Value::Text(format!("%{}%", c)));
+                    ors.push(format!("service_names LIKE ?{}", pc));
+                }
+                conds.push(format!("({})", ors.join(" OR ")));
+            }
+        }
+    }
+
     let mut w = WhereBuilder::from_filter_params(params);
     w.conditions.push("\"法人番号\" IS NOT NULL AND \"法人番号\" != ''".to_string());
 
@@ -2694,11 +2838,68 @@ pub async fn ma_screening(
         violation_expr, where_clause, having, limit_idx
     );
 
-    let mut all_params = w.into_params();
-    all_params.extend(extra_params);
-
     let conn = get_conn(db).await?;
-    let rows = query_rows_params(&conn, &sql, all_params).await?;
+
+    let rows = if use_summary {
+        // corp_summary 版: 列順を facilities 版と揃えて後段の処理を共通化する
+        let mut sp = base_params;
+        let mut sc_conds = conds;
+        let mut n = pc;
+
+        if let Some(min) = staff_min {
+            n += 1;
+            sp.push(libsql::Value::Real(min));
+            sc_conds.push(format!("total_staff >= ?{}", n));
+        }
+        if let Some(max) = staff_max {
+            n += 1;
+            sp.push(libsql::Value::Real(max));
+            sc_conds.push(format!("total_staff <= ?{}", n));
+        }
+        if let Some(min) = turnover_min {
+            n += 1;
+            sp.push(libsql::Value::Real(min));
+            sc_conds.push(format!("avg_turnover >= ?{}", n));
+        }
+        if let Some(max) = turnover_max {
+            n += 1;
+            sp.push(libsql::Value::Real(max));
+            sc_conds.push(format!("avg_turnover <= ?{}", n));
+        }
+        if only_with_financials {
+            sc_conds.push("has_financials = 1".into());
+        }
+        if only_insolvent {
+            sc_conds.push("is_insolvent = 1".into());
+        }
+        if only_operating_loss {
+            sc_conds.push("has_operating_loss = 1".into());
+        }
+        if only_with_violations {
+            sc_conds.push("has_violation = 1".into());
+        }
+        n += 1;
+        sp.push(libsql::Value::Integer(limit as i64));
+
+        let where_sql = if sc_conds.is_empty() {
+            String::new()
+        } else {
+            format!("WHERE {}", sc_conds.join(" AND "))
+        };
+        let summary_sql = format!(
+            "SELECT corp_name, corp_number, corp_type, facility_count, total_staff, \
+                    avg_turnover, avg_capacity, prefectures, service_names, \
+                    has_financials, is_insolvent, has_operating_loss, has_violation \
+             FROM corp_summary {} \
+             ORDER BY facility_count DESC, total_staff DESC LIMIT ?{}",
+            where_sql, n
+        );
+        query_rows_params(&conn, &summary_sql, sp).await?
+    } else {
+        let mut all_params = w.into_params();
+        all_params.extend(extra_params);
+        query_rows_params(&conn, &sql, all_params).await?
+    };
 
     let items: Vec<Value> = rows.iter().enumerate().map(|(_i, row)| {
         let fac_count = row_i64(row, 3) as f64;
@@ -2763,15 +2964,17 @@ pub async fn ma_screening(
 
     // レビュー対応(2026-07-28): funnelの「全法人」が表示件数(LIMIT後)と同値になる誤りを修正。
     // 全国のユニーク法人総数を別途取得し、「表示中は上位のみ」であることを正直に示す。
-    let total_corps = query_single_row_params(
-        &conn,
-        "SELECT COUNT(DISTINCT \"法人番号\") FROM facilities WHERE COALESCE(\"法人番号\",'') != ''",
-        vec![],
-    )
-    .await
-    .ok()
-    .map(|r| row_i64(&r, 0))
-    .unwrap_or(total as i64);
+    // corp_summary があれば 1 法人 1 行なので COUNT(*) で足りる（COUNT(DISTINCT) より軽い）
+    let total_corps_sql = if use_summary {
+        "SELECT COUNT(*) FROM corp_summary"
+    } else {
+        "SELECT COUNT(DISTINCT \"法人番号\") FROM facilities WHERE COALESCE(\"法人番号\",'') != ''"
+    };
+    let total_corps = query_single_row_params(&conn, total_corps_sql, vec![])
+        .await
+        .ok()
+        .map(|r| row_i64(&r, 0))
+        .unwrap_or(total as i64);
 
     Ok(json!({
         "items": items,

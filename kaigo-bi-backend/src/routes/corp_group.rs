@@ -86,7 +86,16 @@ async fn get_kasan_heatmap(
 ) -> Result<Json<Value>, AppError> {
     if params.is_default() {
         if let Some(cached) = state.cache_store.get_global("corp_group_kasan_heatmap") {
-            return Ok(Json(cached.clone()));
+            // kpi_cache には旧スキーマ（法人ごとの kasan_N_rate を並べた配列）が入っている。
+            // 画面は { corps, kasan_items } を前提に列を組み立てるため、旧形式を返すと
+            // 列が undefined になりヒートマップが描画されない。新形式のときだけ使う。
+            if cached.get("kasan_items").is_some() {
+                return Ok(Json(cached.clone()));
+            }
+            tracing::warn!(
+                "corp_group_kasan_heatmap のキャッシュが旧スキーマのため使用しません。\
+                 scripts/aggregate_to_cache.py の再実行で解消します"
+            );
         }
     }
     let result = sql_aggregator::corp_group_kasan_heatmap(&state.db, &params, 10).await?;

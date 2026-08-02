@@ -147,11 +147,24 @@ def safe_float(val):
     # ％記号除去
     s = s.replace("％", "").replace("%", "")
     # カンマ除去
-    s = s.replace(",", "")
+    s = s.replace(",", "").replace("，", "").replace(" ", "").replace("　", "")
     # 全角数字を半角に変換
     s = s.translate(str.maketrans("０１２３４５６７８９．", "0123456789."))
     try:
         return float(s)
+    except (ValueError, TypeError):
+        pass
+    # 「25万」「25万円」「250000円」など単位付きの表記を救う。
+    # 賃金カラムの生値にはこの表記が数百件あり、従来は全て捨てられていた。
+    t = s.replace("円", "")
+    if "万" in t:
+        head = t.split("万", 1)[0]
+        try:
+            return float(head) * 10000
+        except (ValueError, TypeError):
+            return None
+    try:
+        return float(t)
     except (ValueError, TypeError):
         return None
 
