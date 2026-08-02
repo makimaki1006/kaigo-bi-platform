@@ -243,7 +243,7 @@ def turso():
         body = json.dumps({"requests": reqs}).encode()
         req = urllib.request.Request(endpoint, data=body, headers={
             "Authorization": f"Bearer {token}", "Content-Type": "application/json"})
-        with urllib.request.urlopen(req, timeout=120) as r:
+        with urllib.request.urlopen(req, timeout=600) as r:
             data = json.loads(r.read())
         out = []
         for res in data["results"]:
