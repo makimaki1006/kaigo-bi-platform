@@ -524,7 +524,16 @@ function DueDiligenceContent() {
                 {/* 施設別詳細（施設が2つ以上の場合に表示） */}
                 {report.kasan_summary.facilities.length > 1 && (
                   <>
-                    <h4 className="text-xs font-semibold text-gray-500 mb-2 mt-4 px-3">施設別詳細</h4>
+                    <h4 className="text-xs font-semibold text-gray-500 mb-2 mt-4 px-3">
+                      施設別詳細
+                      {report.kasan_summary.facilities.length <
+                        report.kasan_summary.facility_count && (
+                        <span className="ml-2 font-normal text-gray-400">
+                          （全{report.kasan_summary.facility_count}施設のうち先頭
+                          {report.kasan_summary.facilities.length}施設を表示。上の取得率は全施設で集計）
+                        </span>
+                      )}
+                    </h4>
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-gray-200">

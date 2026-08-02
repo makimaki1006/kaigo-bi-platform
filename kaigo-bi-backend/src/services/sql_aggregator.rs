@@ -1486,10 +1486,12 @@ pub async fn corp_group_kasan_heatmap(db: &Database, params: &FilterParams, top_
         return Ok(json!({ "corps": [] }));
     }
 
+    // 実カラム名は「加算_特定事業所I」「加算_認知症ケアI」。旧定義の「加算_特定I」
+    // 「加算_認知症I」は存在せず、クエリが no such column で失敗して無言で空になっていた。
     let kasan_cols = vec![
         "加算_処遇改善I", "加算_処遇改善II", "加算_処遇改善III", "加算_処遇改善IV",
-        "加算_特定I", "加算_特定II", "加算_特定III", "加算_特定IV", "加算_特定V",
-        "加算_認知症I", "加算_認知症II", "加算_口腔連携", "加算_緊急時",
+        "加算_特定事業所I", "加算_特定事業所II", "加算_特定事業所III", "加算_特定事業所IV", "加算_特定事業所V",
+        "加算_認知症ケアI", "加算_認知症ケアII", "加算_口腔連携", "加算_緊急時",
     ];
     let kasan_names = vec![
         "処遇改善加算I", "処遇改善加算II", "処遇改善加算III", "処遇改善加算IV",
@@ -1508,7 +1510,11 @@ pub async fn corp_group_kasan_heatmap(db: &Database, params: &FilterParams, top_
         format!("?{}", i + 1)
     }).collect();
 
-    let kasan_select: Vec<String> = kasan_cols.iter().map(|c| format!("COALESCE(\"{}\", 0)", c)).collect();
+    // 値は TEXT の '0'/'1' で入っているため、整数比較する前に CAST する
+    let kasan_select: Vec<String> = kasan_cols
+        .iter()
+        .map(|c| format!("CAST(COALESCE(NULLIF(\"{}\", ''), '0') AS INTEGER)", c))
+        .collect();
     let fac_sql = format!(
         "SELECT \"法人番号\", \"事業所名\", {} FROM facilities WHERE \"法人番号\" IN ({})",
         kasan_select.join(", "),
@@ -2663,6 +2669,69 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
         }));
     }
 
+    // 加算取得状況（13項目 × 法人配下の全施設）
+    // DBのカラム名は「加算_特定事業所I」「加算_認知症ケアI」、値は TEXT の '0'/'1'。
+    let kasan_summary = {
+        let cols = [
+            "加算_処遇改善I", "加算_処遇改善II", "加算_処遇改善III", "加算_処遇改善IV",
+            "加算_特定事業所I", "加算_特定事業所II", "加算_特定事業所III",
+            "加算_特定事業所IV", "加算_特定事業所V",
+            "加算_認知症ケアI", "加算_認知症ケアII", "加算_口腔連携", "加算_緊急時",
+        ];
+        // フロントの表示名 = カラム名から「加算_」を除いたもの
+        let names: Vec<&str> = cols.iter().map(|c| &c["加算_".len()..]).collect();
+
+        let selects: Vec<String> = cols
+            .iter()
+            .map(|c| format!("CAST(COALESCE(NULLIF(\"{}\", ''), '0') AS INTEGER)", c))
+            .collect();
+        let kasan_sql = format!(
+            "SELECT \"事業所名\", {} FROM facilities WHERE \"法人番号\" = ?1",
+            selects.join(", ")
+        );
+        let kasan_rows = query_rows_params(
+            &conn,
+            &kasan_sql,
+            vec![libsql::Value::Text(corp_number.to_string())],
+        )
+        .await
+        .unwrap_or_default();
+
+        let mut totals: serde_json::Map<String, Value> = serde_json::Map::new();
+        for n in &names {
+            totals.insert(n.to_string(), json!(0));
+        }
+        // totals は全施設で集計する。施設別の明細だけは行数上限を設ける
+        // （2,700施設超の法人が実在するため）。切り捨てた件数はレスポンスに含める。
+        const FACILITY_DETAIL_LIMIT: usize = 200;
+        let mut fac_list = Vec::new();
+        for row in &kasan_rows {
+            let mut map = serde_json::Map::new();
+            for (i, n) in names.iter().enumerate() {
+                let has = row_i64(row, (i + 1) as i32) == 1;
+                map.insert(n.to_string(), json!(has));
+                if has {
+                    let cur = totals.get(*n).and_then(|v| v.as_i64()).unwrap_or(0);
+                    totals.insert(n.to_string(), json!(cur + 1));
+                }
+            }
+            if fac_list.len() < FACILITY_DETAIL_LIMIT {
+                fac_list.push(json!({
+                    "facility_name": row_str(row, 0),
+                    "kasan": map,
+                }));
+            }
+        }
+
+        json!({
+            "facilities": fac_list,
+            "totals": totals,
+            "facility_count": kasan_rows.len(),
+            "facilities_shown": fac_list.len(),
+            "has_data": !kasan_rows.is_empty(),
+        })
+    };
+
     // 法人レベルのクロス指標:
     // レビュー指摘(2026-07-27)対応 —
     // 旧実装は「売上最大PL」と「総資産最大BS」を独立に選び、別施設・別年度の
@@ -2729,12 +2798,7 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
         "cross_metrics": corp_cross_metrics,
         "risk_flags": risk_flags,
         "benchmark": benchmark,
-        "kasan_summary": {
-            "facilities": [],
-            "totals": {},
-            "facility_count": facility_count,
-            "has_data": false,
-        },
+        "kasan_summary": kasan_summary,
     }))
 }
 
