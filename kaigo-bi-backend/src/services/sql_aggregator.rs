@@ -1842,7 +1842,8 @@ pub async fn search_facilities(db: &Database, params: &SearchParams) -> Result<V
             \"従業者_常勤\", \"従業者_非常勤\", \"従業者_合計\", \"定員\",
             \"事業開始日\", \"前年度採用数\", \"前年度退職数\",
             prefecture, corp_type, turnover_rate, fulltime_ratio, years_in_business,
-            \"サービスコード\", \"サービス名\"
+            \"サービスコード\", \"サービス名\",
+            latitude, longitude
         FROM facilities {}
         ORDER BY {} {}
         LIMIT ?{} OFFSET ?{}",
@@ -1879,6 +1880,8 @@ pub async fn search_facilities(db: &Database, params: &SearchParams) -> Result<V
             "years_in_business": row_f64_opt(row, 23),
             "service_code": row_str_opt(row, 24),
             "service_name": row_str_opt(row, 25),
+            "latitude": row_f64_opt(row, 26),
+            "longitude": row_f64_opt(row, 27),
         })
     }).collect();
 
@@ -1889,6 +1892,139 @@ pub async fn search_facilities(db: &Database, params: &SearchParams) -> Result<V
         "per_page": per_page,
         "total_pages": total_pages,
     }))
+}
+
+/// 周辺施設検索 — 指定施設を中心に半径内の施設を返す
+///
+/// 座標は国交省の位置参照情報（町丁目レベル）由来なので、同一町丁目の施設は
+/// 同じ座標を持つ。距離は目安として扱うこと。
+pub async fn facilities_nearby(
+    db: &Database,
+    params: &FilterParams,
+    center_jigyosho: &str,
+    radius_km: f64,
+    limit: usize,
+) -> Result<Value, AppError> {
+    let conn = get_conn(db).await?;
+
+    // 中心施設
+    let center_rows = query_rows_params(
+        &conn,
+        "SELECT \"事業所番号\", \"事業所名\", \"法人名\", prefecture, \"住所\", \
+                \"サービス名\", latitude, longitude \
+         FROM facilities WHERE \"事業所番号\" = ?1",
+        vec![libsql::Value::Text(center_jigyosho.to_string())],
+    )
+    .await?;
+    let c = center_rows
+        .first()
+        .ok_or_else(|| AppError::NotFound(format!("事業所番号 {} が見つかりません", center_jigyosho)))?;
+
+    let (clat, clon) = match (row_f64_opt(c, 6), row_f64_opt(c, 7)) {
+        (Some(a), Some(b)) => (a, b),
+        _ => {
+            return Err(AppError::NotFound(
+                "この施設には位置情報が付与されていません".into(),
+            ))
+        }
+    };
+
+    let radius_km = radius_km.clamp(0.1, 100.0);
+    // 緯度1度=約111km。経度は緯度により縮むので cos で補正して矩形に絞る。
+    let dlat = radius_km / 111.0;
+    let dlon = radius_km / (111.0 * clat.to_radians().cos().abs().max(0.01));
+
+    let w = WhereBuilder::from_filter_params(params);
+    let where_clause = w.to_where_clause();
+    let joiner = if where_clause.is_empty() { "WHERE" } else { "AND" };
+    let sql = format!(
+        "SELECT \"事業所番号\", \"事業所名\", \"法人名\", corp_type, prefecture, \"住所\", \
+                \"サービス名\", latitude, longitude, \
+                CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL), \
+                CAST(COALESCE(NULLIF(\"定員\", ''), '0') AS REAL), \
+                turnover_rate, \"電話番号\" \
+         FROM facilities {wc} {j} \
+             latitude IS NOT NULL AND longitude IS NOT NULL \
+             AND latitude BETWEEN {lat_lo} AND {lat_hi} \
+             AND longitude BETWEEN {lon_lo} AND {lon_hi}",
+        wc = where_clause,
+        j = joiner,
+        lat_lo = clat - dlat,
+        lat_hi = clat + dlat,
+        lon_lo = clon - dlon,
+        lon_hi = clon + dlon,
+    );
+
+    let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
+
+    // 矩形で粗く絞ったものを、実距離（Haversine）で厳密に判定する
+    let mut items: Vec<(f64, Value)> = Vec::new();
+    for row in &rows {
+        let (lat, lon) = match (row_f64_opt(row, 7), row_f64_opt(row, 8)) {
+            (Some(a), Some(b)) => (a, b),
+            _ => continue,
+        };
+        let d = haversine_km(clat, clon, lat, lon);
+        if d > radius_km {
+            continue;
+        }
+        let jno = row_str(row, 0);
+        if jno == center_jigyosho {
+            continue;
+        }
+        items.push((
+            d,
+            json!({
+                "jigyosho_number": jno,
+                "jigyosho_name": row_str(row, 1),
+                "corp_name": row_str_opt(row, 2),
+                "corp_type": row_str_opt(row, 3),
+                "prefecture": row_str_opt(row, 4),
+                "address": row_str_opt(row, 5),
+                "service_name": row_str_opt(row, 6),
+                "latitude": lat,
+                "longitude": lon,
+                "staff_total": row_f64_opt(row, 9),
+                "capacity": row_f64_opt(row, 10),
+                "turnover_rate": row_f64_opt(row, 11),
+                "phone": row_str_opt(row, 12),
+                "distance_km": (d * 100.0).round() / 100.0,
+            }),
+        ));
+    }
+
+    let matched = items.len();
+    items.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
+    let truncated = matched > limit;
+    let out: Vec<Value> = items.into_iter().take(limit).map(|(_, v)| v).collect();
+
+    Ok(json!({
+        "center": {
+            "jigyosho_number": row_str(c, 0),
+            "jigyosho_name": row_str(c, 1),
+            "corp_name": row_str_opt(c, 2),
+            "prefecture": row_str_opt(c, 3),
+            "address": row_str_opt(c, 4),
+            "service_name": row_str_opt(c, 5),
+            "latitude": clat,
+            "longitude": clon,
+        },
+        "radius_km": radius_km,
+        "items": out,
+        // 半径内の該当総数。limit で切った場合に画面がその旨を出せるようにする
+        "matched": matched,
+        "truncated": truncated,
+    }))
+}
+
+/// 2点間の大円距離（km）
+fn haversine_km(lat1: f64, lon1: f64, lat2: f64, lon2: f64) -> f64 {
+    const R: f64 = 6371.0;
+    let (p1, p2) = (lat1.to_radians(), lat2.to_radians());
+    let dp = (lat2 - lat1).to_radians();
+    let dl = (lon2 - lon1).to_radians();
+    let a = (dp / 2.0).sin().powi(2) + p1.cos() * p2.cos() * (dl / 2.0).sin().powi(2);
+    2.0 * R * a.sqrt().asin()
 }
 
 /// 施設詳細 - パラメタライズドクエリ

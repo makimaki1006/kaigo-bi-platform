@@ -169,6 +169,7 @@ export const NAV_ITEMS: NavItem[] = [
   // 市場を知る（全ターゲット共通）
   { label: "ダッシュボード", href: "/dashboard", group: "市場を知る" },
   { label: "市場構造", href: "/market", group: "市場を知る", minPlan: "standard" },
+  { label: "周辺施設マップ", href: "/facility-map", group: "市場を知る", minPlan: "standard" },
   { label: "トレンド分析", href: "/trends", group: "市場を知る", minPlan: "standard" },
   { label: "データインサイト", href: "/insights", group: "市場を知る", minPlan: "standard" },
   // 経営分析（介護事業者向け）

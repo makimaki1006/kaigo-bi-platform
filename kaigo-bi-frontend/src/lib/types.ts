@@ -76,6 +76,9 @@ export interface FacilityRow {
   years_in_business: number | null;
   service_code: string | null;
   service_name: string | null;
+  /** 緯度経度（国交省 位置参照情報の町丁目レベル。未突合の施設は null） */
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 /** 施設検索結果（ページネーション付き） */

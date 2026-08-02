@@ -106,3 +106,7 @@ kaigo-bi-etl/__pycache__/
 *.parquet
 data/financial_pilot/**/*.pdf
 kaigo-bi-frontend/tsconfig.tsbuildinfo
+
+# 位置参照情報(国交省)のダウンロード物と突合結果（再生成可能）
+data/isj/
+data/facility_coordinates.csv

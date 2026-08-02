@@ -25,10 +25,20 @@ interface FacilityMapProps {
   markers: MapMarkerData[];
   /** マップの高さ（px） */
   height?: number;
+  /** 中心にする施設（周辺検索時） */
+  center?: MapMarkerData | null;
+  /** 半径円の大きさ（km） */
+  radiusKm?: number;
 }
 
-export default function FacilityMap({ markers, height = 500 }: FacilityMapProps) {
-  if (markers.length === 0) {
+export default function FacilityMap({
+  markers,
+  height = 500,
+  center = null,
+  radiusKm,
+}: FacilityMapProps) {
+  // 中心施設が指定されていれば、周辺が0件でも地図は出す
+  if (markers.length === 0 && !center) {
     return (
       <div
         className="bg-gray-50 rounded-lg flex items-center justify-center border border-dashed border-gray-200"
@@ -41,5 +51,12 @@ export default function FacilityMap({ markers, height = 500 }: FacilityMapProps)
     );
   }
 
-  return <FacilityMapInner markers={markers} height={height} />;
+  return (
+    <FacilityMapInner
+      markers={markers}
+      height={height}
+      center={center}
+      radiusKm={radiusKm}
+    />
+  );
 }
