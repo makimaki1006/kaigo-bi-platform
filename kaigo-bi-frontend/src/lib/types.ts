@@ -461,7 +461,15 @@ export interface MaTargetRow {
   prefecture: string;
   total_staff: number;
   turnover_rate: number | null;
-  attractiveness_score: number;
+  /** 絶対基準スコア（固定しきい値の加点のみ。母集団で変動しない） */
+  ma_score: number;
+  sales_score: number;
+  size_tier: "小" | "中" | "大";
+  prefecture_count: number;
+  has_financials: boolean;
+  is_insolvent: boolean;
+  has_operating_loss: boolean;
+  has_violation: boolean;
   service_types: string[];
 }
 
@@ -552,7 +560,14 @@ export interface MaCandidate {
   avg_capacity: number;
   prefectures: string[];
   service_names: string[];
-  attractiveness_score: number;
+  /** 規模バッジ（固定しきい値。母集団で変動しない） */
+  size_tier: "小" | "中" | "大";
+  /** 展開都道府県数 */
+  prefecture_count: number;
+  /** M&A観点スコア（0-100、固定しきい値の加点合計） */
+  ma_score: number;
+  /** 営業観点スコア（0-100、固定しきい値の加点合計） */
+  sales_score: number;
   /** 財務・リスクフラグ（決算PDF抽出データ由来） */
   has_financials?: boolean;
   is_insolvent?: boolean;

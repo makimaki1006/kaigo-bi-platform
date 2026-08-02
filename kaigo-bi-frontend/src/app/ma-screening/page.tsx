@@ -85,8 +85,31 @@ function RiskBadges({ row }: { row: MaCandidate }) {
   );
 }
 
+/** 用途別プリセット（同じ生データに対しスコア軸と並び順だけを切り替える） */
+type Perspective = "ma" | "sales";
+
+const PERSPECTIVES: { value: Perspective; label: string; hint: string }[] = [
+  { value: "ma", label: "M&A観点", hint: "規模・財務健全性・違反なしを重視" },
+  { value: "sales", label: "営業観点", hint: "施設数・多拠点展開・従業者規模を重視" },
+];
+
+/** 規模バッジ（固定しきい値：施設数10+ or 従業者200+ = 大 / 3+ or 50+ = 中 / それ以外 = 小） */
+function SizeTierBadge({ tier }: { tier: string }) {
+  const cls =
+    tier === "大"
+      ? "bg-blue-100 text-blue-700"
+      : tier === "中"
+      ? "bg-sky-50 text-sky-700"
+      : "bg-gray-100 text-gray-600";
+  return (
+    <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-semibold ${cls}`}>
+      {tier}
+    </span>
+  );
+}
+
 /** ターゲットリストのカラム定義（実APIのMaCandidateに対応） */
-const TARGET_COLUMNS: ColumnDef<MaCandidate>[] = [
+const buildTargetColumns = (perspective: Perspective): ColumnDef<MaCandidate>[] => [
   {
     key: "corp_name",
     label: "法人名",
@@ -146,12 +169,19 @@ const TARGET_COLUMNS: ColumnDef<MaCandidate>[] = [
     },
   },
   {
-    key: "attractiveness_score",
-    label: "魅力度",
+    key: "size_tier",
+    label: "規模",
+    sortable: true,
+    width: "60px",
+    render: (value: string) => <SizeTierBadge tier={value} />,
+  },
+  {
+    key: perspective === "ma" ? "ma_score" : "sales_score",
+    label: perspective === "ma" ? "M&Aスコア" : "営業スコア",
     sortable: true,
     width: "90px",
     render: (value: number) => {
-      const score = Math.round(value);
+      const score = Math.round(value ?? 0);
       const barColor =
         score >= 80
           ? "bg-emerald-500"
@@ -239,6 +269,7 @@ function MaScreeningContent() {
   const [screeningFilters, setScreeningFilters] = useState<ScreeningFilters>(
     DEFAULT_SCREENING_FILTERS
   );
+  const [perspective, setPerspective] = useState<Perspective>("ma");
 
   // フィルタ更新ヘルパー
   const updateFilter = useCallback(
@@ -303,17 +334,28 @@ function MaScreeningContent() {
   }>("/api/ma/financial-coverage");
 
   // 候補リスト
-  const items = data?.items ?? [];
+  const rawItems = data?.items ?? [];
   const total = data?.total ?? 0;
   const funnel = data?.funnel ?? [];
 
-  // 平均魅力度スコア
-  const avgAttractiveness = useMemo(() => {
+  // 用途別プリセット: スコア軸と並び順のみを切り替える（生データは共通）
+  const scoreOf = (row: MaCandidate) =>
+    (perspective === "ma" ? row.ma_score : row.sales_score) ?? 0;
+
+  const items = useMemo(
+    () => [...rawItems].sort((a, b) => scoreOf(b) - scoreOf(a)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rawItems, perspective]
+  );
+
+  const targetColumns = useMemo(() => buildTargetColumns(perspective), [perspective]);
+
+  // 平均スコア（選択中の観点）
+  const avgScore = useMemo(() => {
     if (items.length === 0) return 0;
-    return Math.round(
-      items.reduce((sum, t) => sum + t.attractiveness_score, 0) / items.length
-    );
-  }, [items]);
+    return Math.round(items.reduce((sum, t) => sum + scoreOf(t), 0) / items.length);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items, perspective]);
 
   return (
     <div className="space-y-6">
@@ -486,12 +528,12 @@ function MaScreeningContent() {
               subtitle="現在のフィルタ条件に合致"
             />
             <KpiCard
-              label="平均魅力度スコア"
-              value={isLoading ? null : avgAttractiveness}
+              label={perspective === "ma" ? "平均M&Aスコア" : "平均営業スコア"}
+              value={isLoading ? null : avgScore}
               format="number"
               icon={<svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></svg>}
               accentColor="bg-amber-500"
-              subtitle="100点満点"
+              subtitle="固定しきい値の加点（100点満点）"
             />
           </div>
 
@@ -504,6 +546,29 @@ function MaScreeningContent() {
                 : `${items.length}件の買収候補法人（全${total}件中）`
             }
           >
+            {/* 用途別プリセット切替 */}
+            <div className="mb-4 flex flex-wrap items-center gap-3">
+              <div className="inline-flex rounded-lg border border-gray-200 p-0.5">
+                {PERSPECTIVES.map((p) => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => setPerspective(p.value)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+                      perspective === p.value
+                        ? "bg-brand-600 text-white"
+                        : "text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+              <span className="text-xs text-gray-500">
+                {PERSPECTIVES.find((p) => p.value === perspective)?.hint}
+              </span>
+            </div>
+
             {isLoading ? (
               <LoadingSpinner text="スクリーニング中..." />
             ) : items.length === 0 ? (
@@ -512,7 +577,7 @@ function MaScreeningContent() {
               </div>
             ) : (
               <DataTable<MaCandidate>
-                columns={TARGET_COLUMNS}
+                columns={targetColumns}
                 data={items}
               />
             )}

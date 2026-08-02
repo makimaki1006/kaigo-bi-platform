@@ -2368,10 +2368,38 @@ pub async fn ma_screening(
         let fac_count = row_i64(row, 3) as f64;
         let total_staff = row_f64(row, 4);
         let avg_turnover = row_f64_opt(row, 5);
-        // 魅力度スコア（簡易版: 施設数 * 20 + 従業者数 / 10、上限100）
-        let score = ((fac_count * 20.0 + total_staff / 10.0).min(100.0)).max(0.0);
         let prefs_str = row_str(row, 7);
         let svcs_str = row_str(row, 8);
+        let has_financials = row_i64(row, 9) == 1;
+        let is_insolvent = row_i64(row, 10) == 1;
+        let has_operating_loss = row_i64(row, 11) == 1;
+        let has_violation = row_i64(row, 12) == 1;
+        let pref_count = prefs_str.split(',').filter(|s| !s.is_empty()).count() as f64;
+
+        // 規模区分（固定しきい値・母集団非依存）
+        let size_tier = if fac_count >= 10.0 || total_staff >= 200.0 {
+            "大"
+        } else if fac_count >= 3.0 || total_staff >= 50.0 {
+            "中"
+        } else {
+            "小"
+        };
+
+        // 用途別スコア（絶対基準: 固定しきい値の加点のみ。母集団で変動しない）
+        // M&A観点: 規模の実体 + 財務情報の有無 + リスクの無さ
+        let mut ma_score = 0.0_f64;
+        if fac_count >= 10.0 { ma_score += 30.0 } else if fac_count >= 3.0 { ma_score += 20.0 } else { ma_score += 10.0 }
+        if total_staff >= 200.0 { ma_score += 25.0 } else if total_staff >= 50.0 { ma_score += 15.0 } else { ma_score += 5.0 }
+        if has_financials { ma_score += 15.0 }          // 財務情報が取得できる＝精査可能
+        if !is_insolvent && !has_operating_loss { ma_score += 20.0 }  // 債務超過・営業赤字なし
+        if !has_violation { ma_score += 10.0 }          // 行政指導なし
+
+        // 営業観点: 提案余地(施設数) + 商圏の広さ + 人員規模
+        let mut sales_score = 0.0_f64;
+        if fac_count >= 10.0 { sales_score += 40.0 } else if fac_count >= 3.0 { sales_score += 25.0 } else { sales_score += 10.0 }
+        if pref_count >= 3.0 { sales_score += 25.0 } else if pref_count >= 2.0 { sales_score += 15.0 } else { sales_score += 5.0 }
+        if total_staff >= 200.0 { sales_score += 25.0 } else if total_staff >= 50.0 { sales_score += 15.0 } else { sales_score += 5.0 }
+        if !has_violation { sales_score += 10.0 }
 
         json!({
             "corp_name": row_str(row, 0),
@@ -2383,11 +2411,15 @@ pub async fn ma_screening(
             "avg_capacity": row_f64(row, 6),
             "prefectures": prefs_str.split(',').filter(|s| !s.is_empty()).collect::<Vec<&str>>(),
             "service_names": svcs_str.split(',').filter(|s| !s.is_empty()).collect::<Vec<&str>>(),
-            "attractiveness_score": score,
-            "has_financials": row_i64(row, 9) == 1,
-            "is_insolvent": row_i64(row, 10) == 1,
-            "has_operating_loss": row_i64(row, 11) == 1,
-            "has_violation": row_i64(row, 12) == 1,
+            // 絶対基準スコア（固定しきい値の加点のみ。検索条件を変えても同じ法人の値は変わらない）
+            "ma_score": ma_score,
+            "sales_score": sales_score,
+            "size_tier": size_tier,
+            "prefecture_count": pref_count,
+            "has_financials": has_financials,
+            "is_insolvent": is_insolvent,
+            "has_operating_loss": has_operating_loss,
+            "has_violation": has_violation,
         })
     }).collect();
 
