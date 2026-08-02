@@ -1131,6 +1131,9 @@ pub async fn salary_by_job_type(db: &Database, params: &FilterParams) -> Result<
         &[
             &format!("AVG({}) as avg_salary", SALARY_EXPR),
             "COUNT(*) as cnt",
+            // 画面が avg_age / avg_tenure を読むが返していなかった（常に非表示だった）
+            "AVG(CAST(NULLIF(\"賃金_平均年齢1\", '') AS REAL)) as avg_age",
+            "AVG(CAST(NULLIF(\"賃金_平均勤続1\", '') AS REAL)) as avg_tenure",
         ],
         &where_clause,
         &extra_cond,
@@ -1146,6 +1149,8 @@ pub async fn salary_by_job_type(db: &Database, params: &FilterParams) -> Result<
             "job_type": row_str(row, 0),
             "avg_salary": row_f64(row, 1),
             "count": row_i64(row, 2),
+            "avg_age": row_f64_opt(row, 3),
+            "avg_tenure": row_f64_opt(row, 4),
         })
     }).collect();
 
@@ -1521,10 +1526,6 @@ pub async fn corp_group_kasan_heatmap(db: &Database, params: &FilterParams, top_
     let conn = get_conn(db).await?;
     let top_rows = query_rows_params(&conn, &top_sql, top_params).await?;
 
-    if top_rows.is_empty() {
-        return Ok(json!({ "corps": [] }));
-    }
-
     // 実カラム名は「加算_特定事業所I」「加算_認知症ケアI」。旧定義の「加算_特定I」
     // 「加算_認知症I」は存在せず、クエリが no such column で失敗して無言で空になっていた。
     let kasan_cols = vec![
@@ -1537,6 +1538,11 @@ pub async fn corp_group_kasan_heatmap(db: &Database, params: &FilterParams, top_
         "特定事業所加算I", "特定事業所加算II", "特定事業所加算III", "特定事業所加算IV", "特定事業所加算V",
         "認知症ケア加算I", "認知症ケア加算II", "口腔連携加算", "緊急時加算",
     ];
+
+    // 該当法人が無くても列定義は返す（画面が kasan_items を列に使うため）
+    if top_rows.is_empty() {
+        return Ok(json!({ "corps": [], "kasan_items": kasan_names }));
+    }
 
     // 法人番号リストを収集
     let corp_numbers: Vec<String> = top_rows.iter().map(|r| row_str(r, 0)).collect();
@@ -1593,7 +1599,9 @@ pub async fn corp_group_kasan_heatmap(db: &Database, params: &FilterParams, top_
         }));
     }
 
-    Ok(json!({ "corps": corps }))
+    // 画面は kasan_items を列定義として使う。返していなかったため列が undefined になり、
+    // ヒートマップが描画されていなかった。
+    Ok(json!({ "corps": corps, "kasan_items": kasan_names }))
 }
 
 // ================================================================
