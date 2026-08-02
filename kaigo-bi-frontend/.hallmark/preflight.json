@@ -1,0 +1,9 @@
+{
+  "scanned_at": "2026-08-02",
+  "framework": "Next.js 14 App Router",
+  "font_stack": ["Inter", "Noto Sans JP"],
+  "palette": "Tailwind indigo brand scale with slate neutrals",
+  "motion": "framer-motion installed; public landing page static",
+  "spacing": "Tailwind default 4px-based scale",
+  "preserve": ["indigo brand anchor", "existing routes", "SEO metadata", "authentication boundary"]
+}

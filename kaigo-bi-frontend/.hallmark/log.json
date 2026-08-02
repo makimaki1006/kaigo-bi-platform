@@ -1,0 +1,11 @@
+[
+  {
+    "date": "2026-08-02",
+    "macrostructure": "Stat-Led",
+    "theme": "custom",
+    "theme_axes": "light-tinted / technical-sans / deep-indigo",
+    "vibe": "practical dense trustworthy data terminal",
+    "enrichment": "none",
+    "brief": "Redesign kaigo-bi public landing around real data and sales-list workflow"
+  }
+]
