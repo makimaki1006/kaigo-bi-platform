@@ -83,6 +83,20 @@ function FacilityMapContent() {
     { q: debouncedQuery, per_page: 10 }
   );
 
+  // 検索候補は事業所番号でユニーク化する。
+  // facilities は1事業所×1サービスで1行なので、そのまま並べると
+  // 同じ施設が最大8件並んでしまう。
+  const searchCandidates = useMemo(() => {
+    const seen = new Set<string>();
+    const out: NonNullable<typeof searchResult>["items"] = [];
+    for (const f of searchResult?.items ?? []) {
+      if (seen.has(f.jigyosho_number)) continue;
+      seen.add(f.jigyosho_number);
+      out.push(f);
+    }
+    return out;
+  }, [searchResult]);
+
   // 周辺検索
   const nearbyParams = useMemo(() => {
     const p: Record<string, string | number> = { center: centerId ?? "", radius_km: radiusKm };
@@ -158,9 +172,9 @@ function FacilityMapContent() {
           className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-brand-500 focus:outline-none focus:ring-1 focus:ring-brand-500"
         />
         {searchLoading && <p className="mt-2 text-xs text-gray-400">検索中...</p>}
-        {searchResult?.items && searchResult.items.length > 0 && (
+        {searchCandidates.length > 0 && (
           <ul className="mt-3 divide-y divide-gray-100 rounded-lg border border-gray-100">
-            {searchResult.items.map((f) => (
+            {searchCandidates.map((f) => (
               <li key={f.jigyosho_number}>
                 <button
                   type="button"
@@ -181,7 +195,7 @@ function FacilityMapContent() {
             ))}
           </ul>
         )}
-        {debouncedQuery.length >= 2 && !searchLoading && searchResult?.items?.length === 0 && (
+        {debouncedQuery.length >= 2 && !searchLoading && searchCandidates.length === 0 && (
           <p className="mt-2 text-xs text-gray-400">該当する施設が見つかりませんでした</p>
         )}
       </ChartCard>

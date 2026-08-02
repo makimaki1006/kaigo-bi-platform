@@ -31,6 +31,9 @@ struct NearbyQuery {
     radius_km: Option<f64>,
     #[serde(default)]
     limit: Option<usize>,
+    /// サービス名の部分一致（FilterParams は service_code しか持たないため独自に受ける）
+    #[serde(default)]
+    service_name: Option<String>,
 }
 
 /// GET /api/facilities/nearby?center=<事業所番号>&radius_km=3&...
@@ -46,6 +49,7 @@ async fn facilities_nearby(
         &nq.center,
         nq.radius_km.unwrap_or(3.0),
         nq.limit.unwrap_or(500).min(2000),
+        nq.service_name.as_deref(),
     )
     .await?;
     Ok(Json(result))

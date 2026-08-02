@@ -1774,25 +1774,80 @@ pub async fn meta(db: &Database) -> Result<Value, AppError> {
 // ================================================================
 
 /// 施設検索
+/// FTS5 の MATCH に渡す文字列を作る。
+///
+/// trigram トークナイザではフレーズ検索（ダブルクォート囲み）が部分一致に相当する。
+/// クエリ構文の記号を素通しすると MATCH がエラーになるので、内部の `"` を潰して囲む。
+fn fts_quote(q: &str) -> String {
+    format!("\"{}\"", q.replace('"', " "))
+}
+
+/// facilities_fts が使えるか。結果はプロセス内で1度だけ判定して保持する。
+async fn fts_available(db: &Database) -> bool {
+    use std::sync::atomic::{AtomicU8, Ordering};
+    // 0 = 未判定, 1 = あり, 2 = なし
+    static STATE: AtomicU8 = AtomicU8::new(0);
+    match STATE.load(Ordering::Relaxed) {
+        1 => return true,
+        2 => return false,
+        _ => {}
+    }
+    let mut ok = false;
+    if let Ok(conn) = get_conn(db).await {
+        if let Ok(mut rows) = conn
+            .query(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='facilities_fts'",
+                (),
+            )
+            .await
+        {
+            ok = matches!(rows.next().await, Ok(Some(_)));
+        }
+    }
+    STATE.store(if ok { 1 } else { 2 }, Ordering::Relaxed);
+    if !ok {
+        tracing::warn!(
+            "facilities_fts が見つかりません。施設検索は低速な LIKE にフォールバックします。\
+             scripts/build_search_index.py --build で索引を作成してください"
+        );
+    }
+    ok
+}
+
 pub async fn search_facilities(db: &Database, params: &SearchParams) -> Result<Value, AppError> {
     let filter_params = params.to_filter_params();
     let mut w = WhereBuilder::from_filter_params(&filter_params);
 
-    // テキスト検索（q パラメータ）- パラメタライズド
+    // テキスト検索（q パラメータ）
+    //
+    // 以前は 事業所名/法人名/電話番号 に LIKE '%q%' を並べていたが、223,103行の
+    // 全表スキャンになり実測 20〜29 秒（COUNT と本体で 2 回走るため体感 57 秒）だった。
+    // FTS5(trigram) の索引 facilities_fts を引いて事業所番号で絞る。
+    // 索引が未構築の環境でも動くよう、失敗時は LIKE にフォールバックする。
     if let Some(ref q) = params.q {
         let q = q.trim();
         if !q.is_empty() {
-            let like_val = format!("%{}%", q);
-            let idx1 = w.next_param();
-            w.params.push(libsql::Value::Text(like_val.clone()));
-            let idx2 = w.next_param();
-            w.params.push(libsql::Value::Text(like_val.clone()));
-            let idx3 = w.next_param();
-            w.params.push(libsql::Value::Text(like_val));
-            w.conditions.push(format!(
-                "(\"事業所名\" LIKE ?{} OR \"法人名\" LIKE ?{} OR \"電話番号\" LIKE ?{})",
-                idx1, idx2, idx3
-            ));
+            if fts_available(db).await {
+                let idx = w.next_param();
+                w.params.push(libsql::Value::Text(fts_quote(q)));
+                w.conditions.push(format!(
+                    "\"事業所番号\" IN (SELECT jigyosho_number FROM facilities_fts \
+                     WHERE facilities_fts MATCH ?{})",
+                    idx
+                ));
+            } else {
+                let like_val = format!("%{}%", q);
+                let idx1 = w.next_param();
+                w.params.push(libsql::Value::Text(like_val.clone()));
+                let idx2 = w.next_param();
+                w.params.push(libsql::Value::Text(like_val.clone()));
+                let idx3 = w.next_param();
+                w.params.push(libsql::Value::Text(like_val));
+                w.conditions.push(format!(
+                    "(\"事業所名\" LIKE ?{} OR \"法人名\" LIKE ?{} OR \"電話番号\" LIKE ?{})",
+                    idx1, idx2, idx3
+                ));
+            }
         }
     }
 
@@ -1904,6 +1959,7 @@ pub async fn facilities_nearby(
     center_jigyosho: &str,
     radius_km: f64,
     limit: usize,
+    service_name: Option<&str>,
 ) -> Result<Value, AppError> {
     let conn = get_conn(db).await?;
 
@@ -1946,7 +2002,14 @@ pub async fn facilities_nearby(
     let dlat = radius_km / 111.0;
     let dlon = radius_km / (111.0 * clat.to_radians().cos().abs().max(0.01));
 
-    let w = WhereBuilder::from_filter_params(params);
+    // FilterParams は service_code しか持たないため、サービス名の部分一致は
+    // 周辺検索の独自パラメータとして受ける（「訪問」で訪問系をまとめて絞れる）
+    let mut w = WhereBuilder::from_filter_params(params);
+    if let Some(sn) = service_name.map(str::trim).filter(|s| !s.is_empty()) {
+        let idx = w.next_param();
+        w.params.push(libsql::Value::Text(format!("%{}%", sn)));
+        w.conditions.push(format!("\"サービス名\" LIKE ?{}", idx));
+    }
     let where_clause = w.to_where_clause();
     let joiner = if where_clause.is_empty() { "WHERE" } else { "AND" };
     let sql = format!(
