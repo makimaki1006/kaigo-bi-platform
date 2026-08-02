@@ -2970,7 +2970,8 @@ pub async fn benchmark(db: &Database, jigyosho_number: &str) -> Result<Value, Ap
             CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL) as staff,
             CAST(COALESCE(NULLIF(\"定員\", ''), '0') AS REAL) as capacity,
             turnover_rate, fulltime_ratio, years_in_business,
-            occupancy_rate, quality_score, kasan_count
+            occupancy_rate, quality_score, kasan_count,
+            \"サービス名\"
         FROM facilities WHERE \"事業所番号\" = ?1";
 
     let rows = query_rows_params(&conn, sql, vec![libsql::Value::Text(jigyosho_number.to_string())]).await?;
@@ -2988,6 +2989,7 @@ pub async fn benchmark(db: &Database, jigyosho_number: &str) -> Result<Value, Ap
     let occupancy = row_f64_opt(row, 9).unwrap_or(0.0);
     let quality = row_f64_opt(row, 10).unwrap_or(0.0);
     let kasan = row_f64_opt(row, 11).unwrap_or(0.0);
+    let service_name = row_str_opt(row, 12).unwrap_or_default();
 
     // 全国平均（パラメータ不要）
     let avg_sql = "SELECT
@@ -3037,6 +3039,90 @@ pub async fn benchmark(db: &Database, jigyosho_number: &str) -> Result<Value, Ap
         {"axis": "加算取得数", "value": kasan, "national_avg": row_f64(&nat_row, 7), "pref_avg": pref_kasan},
     ]);
 
+    // パーセンタイル（全国 / 都道府県内 / 同一サービス種別）
+    // 旧実装は "percentiles": {} を返しており、画面のパーセンタイル表が常に非表示だった。
+    // 各指標について「この施設より低い値の施設が何%あるか」= 高いほど上位。
+    // 定着率は 1 - 離職率 として扱うので、離職率が低いほど上位になる。
+    // (指標名, 値が有効な行の条件, その施設より下位である条件)
+    // 未登録(NULL/空)を 0 とみなして母数に含めるとパーセンタイルが歪むため、
+    // 指標ごとに有効な行だけを母数にする。
+    let pct_exprs: Vec<(&str, String, String)> = vec![
+        (
+            "従業者数",
+            "NULLIF(\"従業者_合計\", '') IS NOT NULL".into(),
+            format!("CAST(NULLIF(\"従業者_合計\", '') AS REAL) < {}", staff),
+        ),
+        (
+            "定員",
+            "NULLIF(\"定員\", '') IS NOT NULL".into(),
+            format!("CAST(NULLIF(\"定員\", '') AS REAL) < {}", capacity),
+        ),
+        (
+            "定着率",
+            "turnover_rate BETWEEN 0.0 AND 1.0".into(),
+            format!("turnover_rate BETWEEN 0.0 AND 1.0 AND turnover_rate > {}", turnover),
+        ),
+        (
+            "常勤比率",
+            "fulltime_ratio BETWEEN 0.0 AND 1.0".into(),
+            format!("fulltime_ratio BETWEEN 0.0 AND 1.0 AND fulltime_ratio < {}", fulltime),
+        ),
+        (
+            "事業年数",
+            "years_in_business > 0 AND years_in_business <= 100".into(),
+            format!("years_in_business > 0 AND years_in_business <= 100 AND years_in_business < {}", years),
+        ),
+        (
+            "稼働率",
+            "occupancy_rate BETWEEN 0.0 AND 3.0".into(),
+            format!("occupancy_rate BETWEEN 0.0 AND 3.0 AND occupancy_rate < {}", occupancy),
+        ),
+        (
+            "品質スコア",
+            "NULLIF(quality_score, '') IS NOT NULL".into(),
+            format!("CAST(NULLIF(quality_score, '') AS REAL) < {}", quality),
+        ),
+        (
+            "加算取得数",
+            "NULLIF(kasan_count, '') IS NOT NULL".into(),
+            format!("CAST(NULLIF(kasan_count, '') AS REAL) < {}", kasan),
+        ),
+    ];
+
+    let select_list: Vec<String> = pct_exprs
+        .iter()
+        .map(|(_, valid, less)| {
+            format!(
+                "ROUND(SUM(CASE WHEN {less} THEN 1.0 ELSE 0.0 END) * 100.0 / \
+                 NULLIF(SUM(CASE WHEN {valid} THEN 1.0 ELSE 0.0 END), 0), 1)",
+                less = less,
+                valid = valid
+            )
+        })
+        .collect();
+    let select_list = select_list.join(", ");
+
+    // (スコープ名, WHERE句, バインド値)
+    let scopes: Vec<(&str, String, Vec<libsql::Value>)> = vec![
+        ("national", String::new(), vec![]),
+        ("prefecture", "WHERE prefecture = ?1".into(), vec![libsql::Value::Text(pref.clone())]),
+        ("service", "WHERE \"サービス名\" = ?1".into(), vec![libsql::Value::Text(service_name.clone())]),
+    ];
+
+    let mut percentiles = serde_json::Map::new();
+    for (scope, where_sql, bind) in scopes {
+        let sql = format!("SELECT {} FROM facilities {}", select_list, where_sql);
+        let mut m = serde_json::Map::new();
+        if let Ok(r) = query_single_row_params(&conn, &sql, bind).await {
+            for (i, (name, _, _)) in pct_exprs.iter().enumerate() {
+                if let Some(v) = row_f64_opt(&r, i as i32) {
+                    m.insert(name.to_string(), json!(v));
+                }
+            }
+        }
+        percentiles.insert(scope.to_string(), Value::Object(m));
+    }
+
     // 改善提案
     let mut suggestions = Vec::new();
     let nat_turnover = row_f64(&nat_row, 2);
@@ -3066,7 +3152,7 @@ pub async fn benchmark(db: &Database, jigyosho_number: &str) -> Result<Value, Ap
             "prefecture": pref,
         },
         "radar": radar,
-        "percentiles": {},
+        "percentiles": percentiles,
         "improvement_suggestions": suggestions,
     }))
 }
