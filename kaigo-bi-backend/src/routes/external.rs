@@ -639,7 +639,11 @@ async fn cost_breakdown(
     // 4. 土地・施設関連費: 家計住居費ベース推定
     let housing_rows = conn
         .query(
-            "SELECT monthly_amount FROM v2_external_household_spending WHERE prefecture = ?1 AND category LIKE '%住居%' LIMIT 1",
+            // 実スキーマ: city / prefecture / category / annual_amount_yen / year
+            // 県内の市を平均し、年額→月額に換算する
+            "SELECT AVG(annual_amount_yen) / 12.0 FROM v2_external_household_spending \
+             WHERE prefecture = ?1 AND category LIKE '%住居%' \
+             AND year = (SELECT MAX(year) FROM v2_external_household_spending WHERE prefecture = ?1 AND category LIKE '%住居%')",
             [prefecture.clone()],
         )
         .await
