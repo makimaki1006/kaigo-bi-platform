@@ -1606,17 +1606,26 @@ pub async fn growth_kpi(db: &Database, params: &FilterParams) -> Result<Value, A
     let where_clause = w.to_where_clause();
 
     // years_in_business の異常値(パース失敗の負値・巨大値)を除外(0超〜100年)
+    //
+    // 画面が oldest_years / new_facilities_5yr / total_facilities を読んでいたが
+    // どれも返していなかった。「最長事業年数」は常に空、「5年以内の新設」は
+    // recent_3yr_count に、「総施設数」は total_with_start_date にフォールバックし、
+    // ラベルと中身が食い違っていた。3つとも実際に集計して返す。
     let sql = format!(
         "SELECT
             COUNT(*) as total_with_date,
             AVG(years_in_business) as avg_years,
-            SUM(CASE WHEN years_in_business <= 3 THEN 1 ELSE 0 END) as recent_3yr
-        FROM facilities {} {} years_in_business IS NOT NULL AND years_in_business > 0 AND years_in_business <= 100",
-        where_clause,
-        if where_clause.is_empty() { "WHERE" } else { "AND" }
+            SUM(CASE WHEN years_in_business <= 3 THEN 1 ELSE 0 END) as recent_3yr,
+            SUM(CASE WHEN years_in_business <= 5 THEN 1 ELSE 0 END) as recent_5yr,
+            MAX(years_in_business) as oldest_years,
+            (SELECT COUNT(*) FROM facilities {wc}) as total_facilities
+        FROM facilities {wc} {j} years_in_business IS NOT NULL AND years_in_business > 0 AND years_in_business <= 100",
+        wc = where_clause,
+        j = if where_clause.is_empty() { "WHERE" } else { "AND" }
     );
 
     let conn = get_conn(db).await?;
+    // ?N 形式の番号付きプレースホルダなので where_clause が2箇所でもバインドは1セット
     let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
 
     let total_with_date = row_i64(&row, 0);
@@ -1627,6 +1636,9 @@ pub async fn growth_kpi(db: &Database, params: &FilterParams) -> Result<Value, A
         "avg_years_in_business": row_f64(&row, 1),
         "net_growth_rate": if total_with_date > 0 { recent_3yr as f64 / total_with_date as f64 } else { 0.0 },
         "total_with_start_date": total_with_date,
+        "new_facilities_5yr": row_i64(&row, 3),
+        "oldest_years": row_f64_opt(&row, 4),
+        "total_facilities": row_i64(&row, 5),
     }))
 }
 
