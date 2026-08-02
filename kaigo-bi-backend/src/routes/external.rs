@@ -114,8 +114,17 @@ async fn hiring_difficulty(
 
     // 外部統計取得
     let conn = external_db.connect().map_err(|e| AppError::Internal(format!("外部DB接続エラー: {}", e)))?;
+    // v2_external_prefecture_stats.job_offers_rate は全47県NULLのため使えない。
+    // 有効求人倍率は v2_external_job_openings_ratio（県×年度）の最新年度から引く。
     let ext_rows = conn
-        .query("SELECT prefecture, job_offers_rate, avg_monthly_wage FROM v2_external_prefecture_stats", ())
+        .query(
+            "SELECT s.prefecture, r.ratio_total, s.avg_monthly_wage \
+             FROM v2_external_prefecture_stats s \
+             LEFT JOIN v2_external_job_openings_ratio r \
+               ON r.prefecture = s.prefecture \
+              AND r.fiscal_year = (SELECT MAX(fiscal_year) FROM v2_external_job_openings_ratio)",
+            (),
+        )
         .await
         .map_err(|e| AppError::Internal(format!("外部DBクエリエラー: {}", e)))?;
 
@@ -166,12 +175,20 @@ async fn hiring_difficulty(
         let avg_turnover = p.avg_turnover_rate;
 
         // 採用難易度スコア（0-100、高いほど困難）
-        let turnover_score = avg_turnover * 200.0;
-        let job_rate_score = (job_rate - 1.0).max(0.0) * 20.0;
-        let wage_score = (1.0 - wage / 400000.0).max(0.0) * 20.0;
+        // 各指標を「業界実態に基づく固定レンジ」で0-1に正規化してから配点する。
+        // 母集団（表示中の都道府県集合）には依存しない絶対基準。
+        //   離職率  : 10%→0点 / 20%以上→40点（介護業界の全国平均は14%前後）
+        //   求人倍率: 0.8→0点 / 1.8以上→40点（全国平均1.25）
+        //   平均賃金: 35万円→0点 / 25万円以下→20点（低賃金ほど採用困難）
+        let turnover_score = ((avg_turnover * 100.0 - 10.0) / 10.0).clamp(0.0, 1.0) * 40.0;
+        let job_rate_score = ((job_rate - 0.8) / 1.0).clamp(0.0, 1.0) * 40.0;
+        let wage_score = ((350000.0 - wage) / 100000.0).clamp(0.0, 1.0) * 20.0;
         let score = (turnover_score + job_rate_score + wage_score).clamp(0.0, 100.0);
 
-        let weather = if score < 25.0 { "☀️" } else if score < 50.0 { "🌤" } else if score < 75.0 { "🌧" } else { "⛈" };
+        // 天気の境界値。上のスコアは全国47県で実測 14.8〜51.7（中央値37.4）に収まるため、
+        // 0/25/50/75 の等間隔では全県が同じ天気になってしまう。実分布に合わせた固定境界を置く。
+        // （固定値なので表示中の母集団が変わっても各県の天気は変わらない）
+        let weather = if score < 30.0 { "☀️" } else if score < 40.0 { "🌤" } else if score < 48.0 { "🌧" } else { "⛈" };
 
         results.push(HiringDifficulty {
             prefecture: p.prefecture.clone(),
