@@ -1919,6 +1919,18 @@ pub async fn facilities_nearby(
     let c = center_rows
         .first()
         .ok_or_else(|| AppError::NotFound(format!("事業所番号 {} が見つかりません", center_jigyosho)))?;
+    // 中心施設も複数サービスで複数行ありうるので、サービス名はまとめて返す
+    let center_services: Vec<String> = {
+        let mut v: Vec<String> = Vec::new();
+        for r in &center_rows {
+            if let Some(s) = row_str_opt(r, 5) {
+                if !v.contains(&s) {
+                    v.push(s);
+                }
+            }
+        }
+        v
+    };
 
     let (clat, clon) = match (row_f64_opt(c, 6), row_f64_opt(c, 7)) {
         (Some(a), Some(b)) => (a, b),
@@ -1957,8 +1969,27 @@ pub async fn facilities_nearby(
 
     let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
 
-    // 矩形で粗く絞ったものを、実距離（Haversine）で厳密に判定する
-    let mut items: Vec<(f64, Value)> = Vec::new();
+    // facilities は1事業所×1サービスで1行。同じ事業所番号が最大8行あるため
+    // (223,103行 / 190,003ユニーク)、事業所単位に集約しないと地図のピンも
+    // 一覧も同じ施設が何度も出てしまう。
+    struct Agg {
+        distance: f64,
+        lat: f64,
+        lon: f64,
+        name: String,
+        corp_name: Option<String>,
+        corp_type: Option<String>,
+        prefecture: Option<String>,
+        address: Option<String>,
+        phone: Option<String>,
+        services: Vec<String>,
+        staff_total: f64,
+        capacity: f64,
+        turnover_sum: f64,
+        turnover_n: usize,
+    }
+
+    let mut agg: std::collections::HashMap<String, Agg> = std::collections::HashMap::new();
     for row in &rows {
         let (lat, lon) = match (row_f64_opt(row, 7), row_f64_opt(row, 8)) {
             (Some(a), Some(b)) => (a, b),
@@ -1972,26 +2003,67 @@ pub async fn facilities_nearby(
         if jno == center_jigyosho {
             continue;
         }
-        items.push((
-            d,
-            json!({
-                "jigyosho_number": jno,
-                "jigyosho_name": row_str(row, 1),
-                "corp_name": row_str_opt(row, 2),
-                "corp_type": row_str_opt(row, 3),
-                "prefecture": row_str_opt(row, 4),
-                "address": row_str_opt(row, 5),
-                "service_name": row_str_opt(row, 6),
-                "latitude": lat,
-                "longitude": lon,
-                "staff_total": row_f64_opt(row, 9),
-                "capacity": row_f64_opt(row, 10),
-                "turnover_rate": row_f64_opt(row, 11),
-                "phone": row_str_opt(row, 12),
-                "distance_km": (d * 100.0).round() / 100.0,
-            }),
-        ));
+        let e = agg.entry(jno).or_insert_with(|| Agg {
+            distance: d,
+            lat,
+            lon,
+            // 同一事業所でも行によって全角スペースの有無が違うことがあるため最初の値を採る
+            name: row_str(row, 1),
+            corp_name: row_str_opt(row, 2),
+            corp_type: row_str_opt(row, 3),
+            prefecture: row_str_opt(row, 4),
+            address: row_str_opt(row, 5),
+            phone: row_str_opt(row, 12),
+            services: Vec::new(),
+            staff_total: 0.0,
+            capacity: 0.0,
+            turnover_sum: 0.0,
+            turnover_n: 0,
+        });
+        if let Some(s) = row_str_opt(row, 6) {
+            if !e.services.contains(&s) {
+                e.services.push(s);
+            }
+        }
+        // 従業者数・定員はサービスごとに計上されているので合算する
+        e.staff_total += row_f64_opt(row, 9).unwrap_or(0.0);
+        e.capacity += row_f64_opt(row, 10).unwrap_or(0.0);
+        if let Some(t) = row_f64_opt(row, 11) {
+            if (0.0..=1.0).contains(&t) {
+                e.turnover_sum += t;
+                e.turnover_n += 1;
+            }
+        }
     }
+
+    let mut items: Vec<(f64, Value)> = agg
+        .into_iter()
+        .map(|(jno, a)| {
+            (
+                a.distance,
+                json!({
+                    "jigyosho_number": jno,
+                    "jigyosho_name": a.name,
+                    "corp_name": a.corp_name,
+                    "corp_type": a.corp_type,
+                    "prefecture": a.prefecture,
+                    "address": a.address,
+                    "service_names": a.services,
+                    "latitude": a.lat,
+                    "longitude": a.lon,
+                    "staff_total": a.staff_total,
+                    "capacity": a.capacity,
+                    "turnover_rate": if a.turnover_n > 0 {
+                        Some(a.turnover_sum / a.turnover_n as f64)
+                    } else {
+                        None
+                    },
+                    "phone": a.phone,
+                    "distance_km": (a.distance * 100.0).round() / 100.0,
+                }),
+            )
+        })
+        .collect();
 
     let matched = items.len();
     items.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap_or(std::cmp::Ordering::Equal));
@@ -2005,7 +2077,7 @@ pub async fn facilities_nearby(
             "corp_name": row_str_opt(c, 2),
             "prefecture": row_str_opt(c, 3),
             "address": row_str_opt(c, 4),
-            "service_name": row_str_opt(c, 5),
+            "service_names": center_services,
             "latitude": clat,
             "longitude": clon,
         },

@@ -26,7 +26,7 @@ interface NearbyCenter {
   corp_name: string | null;
   prefecture: string | null;
   address: string | null;
-  service_name: string | null;
+  service_names: string[];
   latitude: number;
   longitude: number;
 }
@@ -39,7 +39,7 @@ interface NearbyItem {
   corp_type: string | null;
   prefecture: string | null;
   address: string | null;
-  service_name: string | null;
+  service_names: string[];
   latitude: number;
   longitude: number;
   staff_total: number | null;
@@ -106,7 +106,7 @@ function FacilityMapContent() {
       municipality: "",
       corp_name: nearby.center.corp_name ?? undefined,
       address: nearby.center.address ?? undefined,
-      service_name: nearby.center.service_name ?? undefined,
+      service_name: nearby.center.service_names?.join("・") || undefined,
     };
   }, [nearby]);
 
@@ -119,7 +119,7 @@ function FacilityMapContent() {
       prefecture: f.prefecture ?? "",
       municipality: "",
       corp_name: f.corp_name ?? undefined,
-      service_name: f.service_name ?? undefined,
+      service_name: f.service_names?.join("・") || undefined,
       phone: f.phone ?? undefined,
       address: f.address ?? undefined,
       staff_total: f.staff_total ?? undefined,
@@ -133,8 +133,8 @@ function FacilityMapContent() {
     if (!nearby?.items) return [];
     const m = new Map<string, number>();
     for (const f of nearby.items) {
-      const k = f.service_name ?? "不明";
-      m.set(k, (m.get(k) ?? 0) + 1);
+      for (const k of f.service_names ?? []) m.set(k, (m.get(k) ?? 0) + 1);
+      if (!f.service_names?.length) m.set("不明", (m.get("不明") ?? 0) + 1);
     }
     return Array.from(m.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8);
   }, [nearby]);
@@ -288,7 +288,10 @@ function FacilityMapContent() {
 
       {/* サービス構成 */}
       {centerId && !nearbyLoading && serviceMix.length > 0 && (
-        <ChartCard title="周辺のサービス構成" subtitle="半径内に多いサービス種別">
+        <ChartCard
+          title="周辺のサービス構成"
+          subtitle="半径内に多いサービス種別（1事業所が複数サービスを持つ場合はそれぞれ計上）"
+        >
           <div className="flex flex-wrap gap-2">
             {serviceMix.map(([name, cnt]) => (
               <span
@@ -330,7 +333,9 @@ function FacilityMapContent() {
                     <td className="px-3 py-2 text-gray-900">{f.jigyosho_name}</td>
                     <td className="px-3 py-2 text-gray-600">{f.corp_name ?? "-"}</td>
                     <td className="px-3 py-2 text-gray-600">
-                      {f.service_name ? formatServiceName(f.service_name) : "-"}
+                      {f.service_names?.length
+                        ? f.service_names.map(formatServiceName).join("・")
+                        : "-"}
                     </td>
                     <td className="px-3 py-2 text-right tabular-nums text-gray-700">
                       {f.staff_total != null ? Math.round(f.staff_total) : "-"}
