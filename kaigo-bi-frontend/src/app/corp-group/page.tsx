@@ -226,7 +226,7 @@ function CorpGroupContent() {
           />
           <KpiCard
             label="最大施設数法人"
-            value={kpi?.max_facilities_count ?? null}
+            value={kpi?.max_facilities_count ?? kpi?.max_facilities ?? null}
             format="number"
             icon={IconMax}
             accentColor="bg-amber-500"

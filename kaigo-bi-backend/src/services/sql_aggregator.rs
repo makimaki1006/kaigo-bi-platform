@@ -1534,7 +1534,20 @@ pub async fn corp_group_top_corps(db: &Database, params: &FilterParams, limit: u
     );
 
     let conn = get_conn(db).await?;
-    let rows = query_rows_params(&conn, &sql, query_params).await?;
+
+    // フィルタなしのときは事前集計テーブルを引く（列順は下の取り出しに合わせる）
+    let rows = if params.is_default() && corp_summary_available(db).await {
+        query_rows_params(
+            &conn,
+            "SELECT corp_name, corp_number, corp_type, facility_count, total_staff, \
+                    avg_turnover, prefectures, service_names \
+             FROM corp_summary ORDER BY facility_count DESC LIMIT ?1",
+            vec![libsql::Value::Integer(limit as i64)],
+        )
+        .await?
+    } else {
+        query_rows_params(&conn, &sql, query_params).await?
+    };
 
     let results: Vec<Value> = rows.iter().map(|row| {
         let prefs_str = row_str(row, 6);
@@ -1569,13 +1582,26 @@ pub async fn corp_group_kasan_heatmap(db: &Database, params: &FilterParams, top_
     let top_limit_idx = top_params.len() + 1;
     top_params.push(libsql::Value::Integer(top_n as i64));
 
-    let top_sql = format!(
-        "SELECT \"法人番号\", \"法人名\" FROM facilities {} GROUP BY \"法人番号\" ORDER BY COUNT(*) DESC LIMIT ?{}",
-        corp_filter, top_limit_idx
-    );
-
     let conn = get_conn(db).await?;
-    let top_rows = query_rows_params(&conn, &top_sql, top_params).await?;
+
+    // 上位法人の選定は corp_summary（1法人1行・facility_count に索引あり）から行う。
+    // facilities を毎回 GROUP BY すると 190,003 グループの集約になり、
+    // フィルタなしでは分単位になる。フィルタ指定時や未構築時は従来どおり集約する。
+    let top_rows = if params.is_default() && corp_summary_available(db).await {
+        query_rows_params(
+            &conn,
+            "SELECT corp_number, corp_name FROM corp_summary \
+             ORDER BY facility_count DESC LIMIT ?1",
+            vec![libsql::Value::Integer(top_n as i64)],
+        )
+        .await?
+    } else {
+        let top_sql = format!(
+            "SELECT \"法人番号\", \"法人名\" FROM facilities {} GROUP BY \"法人番号\" ORDER BY COUNT(*) DESC LIMIT ?{}",
+            corp_filter, top_limit_idx
+        );
+        query_rows_params(&conn, &top_sql, top_params).await?
+    };
 
     // 実カラム名は「加算_特定事業所I」「加算_認知症ケアI」。旧定義の「加算_特定I」
     // 「加算_認知症I」は存在せず、クエリが no such column で失敗して無言で空になっていた。
@@ -1611,8 +1637,11 @@ pub async fn corp_group_kasan_heatmap(db: &Database, params: &FilterParams, top_
         .iter()
         .map(|c| format!("CAST(COALESCE(NULLIF(\"{}\", ''), '0') AS INTEGER)", c))
         .collect();
+    // 上位法人には 2,700 施設を持つものがあるため件数を抑える。
+    // ヒートマップは「法人ごとの傾向」を見るものなので、法人あたり数施設で足りる。
     let fac_sql = format!(
-        "SELECT \"法人番号\", \"事業所名\", {} FROM facilities WHERE \"法人番号\" IN ({})",
+        "SELECT \"法人番号\", \"事業所名\", {} FROM facilities WHERE \"法人番号\" IN ({}) \
+         ORDER BY \"法人番号\", \"事業所名\" LIMIT 400",
         kasan_select.join(", "),
         placeholders.join(",")
     );
@@ -1626,21 +1655,38 @@ pub async fn corp_group_kasan_heatmap(db: &Database, params: &FilterParams, top_
         corp_facilities.entry(corp_num).or_default().push(fac_row);
     }
 
+    // 1法人あたりの表示行数。上位法人をまんべんなく見せるため均等に割り当てる
+    const PER_CORP: usize = 4;
+
     let mut corps = Vec::new();
+    // 画面の HeatmapChart は「行ラベルの配列」「列ラベルの配列」「値の2次元配列」を取る。
+    // corps だけを返していたため rows/values が undefined になり「データなし」になっていた。
+    let mut row_labels: Vec<String> = Vec::new();
+    let mut matrix: Vec<Vec<Value>> = Vec::new();
+
     for (corp_number, corp_name) in corp_numbers.iter().zip(corp_names.iter()) {
         let mut facilities = Vec::new();
         if let Some(fac_rows_for_corp) = corp_facilities.get(corp_number) {
-            for fac_row in fac_rows_for_corp {
+            for (idx, fac_row) in fac_rows_for_corp.iter().enumerate() {
                 let fac_name = row_str(fac_row, 1);
                 let mut kasan_map = serde_json::Map::new();
+                let mut row_vals: Vec<Value> = Vec::new();
                 for (i, name) in kasan_names.iter().enumerate() {
-                    let val = row_i64(fac_row, (i + 2) as i32);
-                    kasan_map.insert(name.to_string(), json!(val == 1));
+                    let val = row_i64(fac_row, (i + 2) as i32) == 1;
+                    kasan_map.insert(name.to_string(), json!(val));
+                    row_vals.push(json!(val));
                 }
                 facilities.push(json!({
                     "facility_name": fac_name,
                     "kasan": kasan_map,
                 }));
+                if idx < PER_CORP {
+                    // どの法人の施設か分かるようにラベルへ法人名を添える
+                    let short_corp: String = corp_name.chars().take(12).collect();
+                    let short_fac: String = fac_name.chars().take(18).collect();
+                    row_labels.push(format!("{} / {}", short_corp, short_fac));
+                    matrix.push(row_vals);
+                }
             }
         }
 
@@ -1650,9 +1696,12 @@ pub async fn corp_group_kasan_heatmap(db: &Database, params: &FilterParams, top_
         }));
     }
 
-    // 画面は kasan_items を列定義として使う。返していなかったため列が undefined になり、
-    // ヒートマップが描画されていなかった。
-    Ok(json!({ "corps": corps, "kasan_items": kasan_names }))
+    Ok(json!({
+        "corps": corps,
+        "kasan_items": kasan_names,
+        "facilities": row_labels,
+        "values": matrix,
+    }))
 }
 
 // ================================================================
@@ -3020,7 +3069,30 @@ pub async fn dd_search(db: &Database, params: &FilterParams, query: &str) -> Res
     );
 
     let conn = get_conn(db).await?;
-    let rows = query_rows_params(&conn, &sql, w.into_params()).await?;
+
+    // 法人名の部分一致で facilities を GROUP BY すると全表スキャンになり、実測 138 秒。
+    // 1法人1行の corp_summary を引けば同じ結果が桁違いに速く得られる。
+    let rows = if params.is_default() && corp_summary_available(db).await {
+        let mut p: Vec<libsql::Value> = Vec::new();
+        let mut cond = String::new();
+        if !query.is_empty() {
+            p.push(libsql::Value::Text(format!("%{}%", query)));
+            p.push(libsql::Value::Text(query.to_string()));
+            cond = "WHERE (corp_name LIKE ?1 OR corp_number = ?2)".to_string();
+        }
+        query_rows_params(
+            &conn,
+            &format!(
+                "SELECT corp_name, corp_number, facility_count, total_staff \
+                 FROM corp_summary {} ORDER BY facility_count DESC LIMIT 50",
+                cond
+            ),
+            p,
+        )
+        .await?
+    } else {
+        query_rows_params(&conn, &sql, w.into_params()).await?
+    };
 
     let results: Vec<Value> = rows.iter().map(|row| {
         json!({
@@ -3465,21 +3537,17 @@ pub async fn benchmark(db: &Database, jigyosho_number: &str) -> Result<Value, Ap
     let kasan = row_f64_opt(row, 11).unwrap_or(0.0);
     let service_name = row_str_opt(row, 12).unwrap_or_default();
 
-    // 全国平均（パラメータ不要）
-    let avg_sql = "SELECT
-        AVG(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL)),
-        AVG(CAST(COALESCE(NULLIF(\"定員\", ''), '0') AS REAL)),
-        AVG(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END),
-        AVG(CASE WHEN fulltime_ratio BETWEEN 0.0 AND 1.0 THEN fulltime_ratio END),
-        AVG(years_in_business),
-        AVG(CASE WHEN occupancy_rate BETWEEN 0.0 AND 3.0 THEN occupancy_rate END),
-        AVG(CAST(COALESCE(NULLIF(quality_score, ''), '0') AS REAL)),
-        AVG(CAST(COALESCE(NULLIF(kasan_count, ''), '0') AS REAL))
-    FROM facilities";
-    let nat_row = query_single_row_params(&conn, avg_sql, vec![]).await?;
+    // 全国平均・都道府県平均。
+    // facilities に対する 8 指標の AVG は TEXT の CAST を含み全表スキャンになる。
+    // 数値化済みの facility_metrics があればそちらを使う（列が 11 しかなく軽い）。
+    let use_metrics_avg = table_exists(db, "facility_metrics").await;
 
-    // 都道府県平均（パラメタライズド）
-    let pref_avg_sql = "SELECT
+    let avg_sql = if use_metrics_avg {
+        "SELECT AVG(staff), AVG(capacity), AVG(turnover), AVG(fulltime), \
+                AVG(years), AVG(occupancy), AVG(quality), AVG(kasan) \
+         FROM facility_metrics"
+    } else {
+        "SELECT
             AVG(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL)),
             AVG(CAST(COALESCE(NULLIF(\"定員\", ''), '0') AS REAL)),
             AVG(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END),
@@ -3488,7 +3556,26 @@ pub async fn benchmark(db: &Database, jigyosho_number: &str) -> Result<Value, Ap
             AVG(CASE WHEN occupancy_rate BETWEEN 0.0 AND 3.0 THEN occupancy_rate END),
             AVG(CAST(COALESCE(NULLIF(quality_score, ''), '0') AS REAL)),
             AVG(CAST(COALESCE(NULLIF(kasan_count, ''), '0') AS REAL))
-        FROM facilities WHERE prefecture = ?1";
+        FROM facilities"
+    };
+    let nat_row = query_single_row_params(&conn, avg_sql, vec![]).await?;
+
+    let pref_avg_sql = if use_metrics_avg {
+        "SELECT AVG(staff), AVG(capacity), AVG(turnover), AVG(fulltime), \
+                AVG(years), AVG(occupancy), AVG(quality), AVG(kasan) \
+         FROM facility_metrics WHERE prefecture = ?1"
+    } else {
+        "SELECT
+            AVG(CAST(COALESCE(NULLIF(\"従業者_合計\", ''), '0') AS REAL)),
+            AVG(CAST(COALESCE(NULLIF(\"定員\", ''), '0') AS REAL)),
+            AVG(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END),
+            AVG(CASE WHEN fulltime_ratio BETWEEN 0.0 AND 1.0 THEN fulltime_ratio END),
+            AVG(years_in_business),
+            AVG(CASE WHEN occupancy_rate BETWEEN 0.0 AND 3.0 THEN occupancy_rate END),
+            AVG(CAST(COALESCE(NULLIF(quality_score, ''), '0') AS REAL)),
+            AVG(CAST(COALESCE(NULLIF(kasan_count, ''), '0') AS REAL))
+        FROM facilities WHERE prefecture = ?1"
+    };
     // 安全に取得（都道府県行が取れない場合のフォールバック）
     let (pref_staff, pref_cap, pref_turn, pref_ft, pref_years, pref_occ, pref_qual, pref_kasan) =
         match query_single_row_params(&conn, pref_avg_sql, vec![libsql::Value::Text(pref.clone())]).await {
@@ -3563,34 +3650,88 @@ pub async fn benchmark(db: &Database, jigyosho_number: &str) -> Result<Value, Ap
         ),
     ];
 
-    let select_list: Vec<String> = pct_exprs
-        .iter()
-        .map(|(_, valid, less)| {
-            format!(
-                "ROUND(SUM(CASE WHEN {less} THEN 1.0 ELSE 0.0 END) * 100.0 / \
-                 NULLIF(SUM(CASE WHEN {valid} THEN 1.0 ELSE 0.0 END), 0), 1)",
-                less = less,
-                valid = valid
-            )
-        })
-        .collect();
-    let select_list = select_list.join(", ");
+    // (スコープ名, 追加WHERE, バインド値)
+    let scopes: Vec<(&str, &str, Vec<libsql::Value>)> = vec![
+        ("national", "", vec![]),
+        ("prefecture", "prefecture = ?1", vec![libsql::Value::Text(pref.clone())]),
+        ("service", "\"サービス名\" = ?1", vec![libsql::Value::Text(service_name.clone())]),
+    ];
 
-    // (スコープ名, WHERE句, バインド値)
-    let scopes: Vec<(&str, String, Vec<libsql::Value>)> = vec![
-        ("national", String::new(), vec![]),
-        ("prefecture", "WHERE prefecture = ?1".into(), vec![libsql::Value::Text(pref.clone())]),
-        ("service", "WHERE \"サービス名\" = ?1".into(), vec![libsql::Value::Text(service_name.clone())]),
+    // 指標ごとに個別のクエリを投げる。
+    // 8指標を1クエリで集計すると全行を読む必要がありインデックスが効かず、実測 73 秒だった。
+    //
+    // さらに facilities の 従業者_合計 / 定員 / quality_score / kasan_count は TEXT 型で、
+    // CAST を挟むと索引の範囲スキャンが効かない（指標ごとに分けても 47 秒）。
+    // 数値化済みの facility_metrics があればそちらを引く。
+    let use_metrics = table_exists(db, "facility_metrics").await;
+
+    // (指標名, facility_metrics の列, 対象施設の値, 大小の向き)
+    // 定着率だけは「離職率が高い施設が下位」なので比較を反転する
+    let metric_cols: Vec<(&str, &str, f64, bool)> = vec![
+        ("従業者数", "staff", staff, true),
+        ("定員", "capacity", capacity, true),
+        ("定着率", "turnover", turnover, false),
+        ("常勤比率", "fulltime", fulltime, true),
+        ("事業年数", "years", years, true),
+        ("稼働率", "occupancy", occupancy, true),
+        ("品質スコア", "quality", quality, true),
+        ("加算取得数", "kasan", kasan, true),
     ];
 
     let mut percentiles = serde_json::Map::new();
-    for (scope, where_sql, bind) in scopes {
-        let sql = format!("SELECT {} FROM facilities {}", select_list, where_sql);
+    for (scope, scope_cond, bind) in scopes {
         let mut m = serde_json::Map::new();
-        if let Ok(r) = query_single_row_params(&conn, &sql, bind).await {
-            for (i, (name, _, _)) in pct_exprs.iter().enumerate() {
-                if let Some(v) = row_f64_opt(&r, i as i32) {
-                    m.insert(name.to_string(), json!(v));
+
+        if use_metrics {
+            // Turso はリモート実行なので1クエリあたりの往復が支配的（実測 約2秒）。
+            // 指標ごとに分けると 24 クエリで 47 秒かかったため、
+            // スコープ単位の1クエリにまとめる（facility_metrics は 11 列と軽い）。
+            let cond = scope_cond.replace("\"サービス名\"", "service_name");
+            let selects: Vec<String> = metric_cols
+                .iter()
+                .flat_map(|(_, col, val, asc)| {
+                    let cmp = if *asc { "<" } else { ">" };
+                    vec![
+                        format!("SUM(CASE WHEN {c} IS NOT NULL THEN 1 ELSE 0 END)", c = col),
+                        format!(
+                            "SUM(CASE WHEN {c} IS NOT NULL AND {c} {cmp} {v} THEN 1 ELSE 0 END)",
+                            c = col, cmp = cmp, v = val
+                        ),
+                    ]
+                })
+                .collect();
+            let sql = format!(
+                "SELECT {} FROM facility_metrics {}",
+                selects.join(", "),
+                if cond.is_empty() { String::new() } else { format!("WHERE {}", cond) }
+            );
+            if let Ok(r) = query_single_row_params(&conn, &sql, bind.clone()).await {
+                for (i, (name, _, _, _)) in metric_cols.iter().enumerate() {
+                    let total = row_i64(&r, (i * 2) as i32);
+                    let below = row_i64(&r, (i * 2 + 1) as i32);
+                    if total > 0 {
+                        let pct = (below as f64 / total as f64 * 1000.0).round() / 10.0;
+                        m.insert(name.to_string(), json!(pct));
+                    }
+                }
+            }
+        } else {
+            for (name, valid, less) in &pct_exprs {
+                let where_sql = if scope_cond.is_empty() {
+                    format!("WHERE {}", valid)
+                } else {
+                    format!("WHERE {} AND {}", scope_cond, valid)
+                };
+                let sql = format!(
+                    "SELECT COUNT(*), SUM(CASE WHEN {} THEN 1 ELSE 0 END) FROM facilities {}",
+                    less, where_sql
+                );
+                if let Ok(r) = query_single_row_params(&conn, &sql, bind.clone()).await {
+                    let total = row_i64(&r, 0);
+                    if total > 0 {
+                        let pct = (row_i64(&r, 1) as f64 / total as f64 * 1000.0).round() / 10.0;
+                        m.insert(name.to_string(), json!(pct));
+                    }
                 }
             }
         }

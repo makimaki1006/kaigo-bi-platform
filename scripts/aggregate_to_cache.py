@@ -1128,11 +1128,23 @@ def agg_corp_group_kpi(df):
     avg_fac = round_safe(corps.mean())
     max_fac = int(corps.max()) if len(corps) > 0 else 0
 
+    # 最大施設数の法人名（画面のKPIカードが名称も表示する）
+    max_name = None
+    if len(corps) > 0:
+        top_num = corps.idxmax()
+        names = df.loc[df["法人番号"] == top_num, "法人名"].dropna()
+        if len(names) > 0:
+            max_name = str(names.iloc[0])
+
     return {
         "total_corps": total_corps,
         "multi_facility_corps": multi,
         "avg_facilities_per_corp": avg_fac,
+        # 画面と Rust 側は max_facilities_count を読む。旧キー max_facilities のままだと
+        # KPIカードが常に「-」になるため、新キーを正とし旧キーも残す。
+        "max_facilities_count": max_fac,
         "max_facilities": max_fac,
+        "max_facilities_corp_name": max_name,
     }
 
 

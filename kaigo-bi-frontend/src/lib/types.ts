@@ -384,6 +384,8 @@ export interface CorpGroupKpi {
   avg_facilities_per_corp: number;
   max_facilities_corp_name: string | null;
   max_facilities_count: number;
+  /** kpi_cache の旧キー。キャッシュ再生成までのフォールバック用 */
+  max_facilities?: number | null;
 }
 
 /** 法人規模別分布（APIレスポンス: categoryキー） */
