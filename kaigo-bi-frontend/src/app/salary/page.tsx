@@ -131,6 +131,11 @@ function SalaryContent() {
   // データ充填率の計算
   const dataCountInfo = useMemo(() => {
     if (!kpi) return null;
+    // APIが実測のサンプル数・母数を返す場合はそれを優先（推定を挟まない）
+    if (kpi.sample_count != null && kpi.population_count != null && kpi.population_count > 0) {
+      const rate = ((kpi.sample_count / kpi.population_count) * 100).toFixed(1);
+      return { count: kpi.sample_count, total: kpi.population_count, rate };
+    }
     const dataCount = kpi.data_count;
     // data_count がキャッシュに含まれている場合
     if (dataCount != null && dataCount > 0) {
@@ -265,7 +270,13 @@ function SalaryContent() {
         {/* 1. 職種別賃金比較 */}
         <ChartCard
           title="職種別 平均賃金"
-          subtitle={jobTypeWages ? `${jobTypeWages.length}職種のデータ` : "職種の比較棒グラフ"}
+          subtitle={
+            jobTypeWages && jobTypeWages.length > 0
+              ? `${jobTypeWages.length}職種 / 計${jobTypeWages
+                  .reduce((s, w) => s + w.count, 0)
+                  .toLocaleString("ja-JP")}施設。職種名は事業所の自由記述で、1職種あたりの件数が少ない点にご注意ください`
+              : "職種の比較棒グラフ"
+          }
         >
           {jobTypeLoading ? (
             <div className="flex items-center justify-center h-[300px] text-gray-400 text-sm">
@@ -273,7 +284,10 @@ function SalaryContent() {
             </div>
           ) : jobTypeWages && jobTypeWages.length > 0 ? (
             <BarChart
-              data={[...jobTypeWages].sort((a, b) => b.avg_salary - a.avg_salary).slice(0, 20)}
+              data={[...jobTypeWages]
+                .sort((a, b) => b.avg_salary - a.avg_salary)
+                .slice(0, 20)
+                .map((w) => ({ ...w, job_type: `${w.job_type}（n=${w.count}）` }))}
               xKey="job_type"
               yKey="avg_salary"
               color={CHART_COLORS[0]}

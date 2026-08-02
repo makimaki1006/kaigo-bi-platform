@@ -12,6 +12,17 @@ use crate::models::filters::{FilterParams, SearchParams};
 /// 定員フィルタ上限値（異常値を除外するための閾値）
 const MAX_CAPACITY_FILTER: u32 = 500;
 
+/// 賃金の月額として妥当と見なすレンジ（円）。
+/// 実データには 0 円や 5,019 万円といった明らかな誤入力・年額混入が含まれるため、
+/// 集計前にこのレンジで足切りする。
+const SALARY_MIN: u32 = 100_000;
+const SALARY_MAX: u32 = 1_000_000;
+
+/// 賃金の代表値を取り出す SQL 式。
+/// `salary_representative` というカラムは存在せず、実データは 賃金_月額1〜5。
+/// 代表値には第1職種の月額を使う。
+const SALARY_EXPR: &str = "CAST(NULLIF(\"賃金_月額1\", '') AS REAL)";
+
 /// WHERE句とパラメータを構築するヘルパー（パラメタライズドクエリ対応）
 struct WhereBuilder {
     conditions: Vec<String>,
@@ -1067,18 +1078,27 @@ pub async fn salary_kpi(db: &Database, params: &FilterParams) -> Result<Value, A
     let w = WhereBuilder::from_filter_params(params);
     let where_clause = w.to_where_clause();
 
+    // 賃金は全 223,103 施設中 6,084 件(2.7%)しか登録がなく、さらに妥当レンジ外を
+    // 落とすと約 2,600 件になる。母数を伏せると誤読されるので sample_count も返す。
     let sql = format!(
         "SELECT
-            AVG(salary_representative) as avg_salary,
+            AVG({sal}) as avg_salary,
             NULL as median_salary,
-            MAX(salary_representative) as max_salary,
-            MIN(CASE WHEN salary_representative > 0 THEN salary_representative END) as min_salary
-        FROM facilities {} {} salary_representative IS NOT NULL AND salary_representative > 0",
-        where_clause,
-        if where_clause.is_empty() { "WHERE" } else { "AND" }
+            MAX({sal}) as max_salary,
+            MIN({sal}) as min_salary,
+            COUNT({sal}) as sample_count,
+            (SELECT COUNT(*) FROM facilities {wc}) as population_count
+        FROM facilities {wc} {j} {sal} BETWEEN {lo} AND {hi}",
+        sal = SALARY_EXPR,
+        wc = where_clause,
+        j = if where_clause.is_empty() { "WHERE" } else { "AND" },
+        lo = SALARY_MIN,
+        hi = SALARY_MAX
     );
 
     let conn = get_conn(db).await?;
+    // プレースホルダは ?1 形式の番号付きなので、where_clause が2箇所に現れても
+    // バインドは1セットでよい
     let row = query_single_row_params(&conn, &sql, w.into_params()).await?;
 
     Ok(json!({
@@ -1086,27 +1106,36 @@ pub async fn salary_kpi(db: &Database, params: &FilterParams) -> Result<Value, A
         "median_salary": row_f64_opt(&row, 1),
         "max_salary": row_f64_opt(&row, 2),
         "min_salary": row_f64_opt(&row, 3),
+        "sample_count": row_i64(&row, 4),
+        "population_count": row_i64(&row, 5),
     }))
 }
 
 /// 職種別賃金（Tursoのカラム構造に基づく）
 pub async fn salary_by_job_type(db: &Database, params: &FilterParams) -> Result<Value, AppError> {
-    // 賃金カラムはTursoではskipされているため、salary_representativeのみ利用可能
-    // 職種別の分解は難しいため、法人種別で代替
+    // 旧実装は存在しない salary_representative を参照し、しかも職種ではなく
+    // corp_type で代替していた（「職種別」というラベルと中身が食い違っていた）。
+    // 実データには 賃金_職種1 があるのでそれで本当の職種別にする。
+    // ただし職種名は自由記述で、上位でも数十件しかない点に注意（count を併せて返す）。
     let w = WhereBuilder::from_filter_params(params);
     let where_clause = w.to_where_clause();
-    let extra_cond = "salary_representative IS NOT NULL AND salary_representative > 0 AND corp_type IS NOT NULL AND corp_type != ''";
+    let extra_cond = format!(
+        "{sal} BETWEEN {lo} AND {hi} AND COALESCE(\"賃金_職種1\", '') != ''",
+        sal = SALARY_EXPR,
+        lo = SALARY_MIN,
+        hi = SALARY_MAX
+    );
 
     let sql = build_grouped_query(
-        &["corp_type"],
+        &["\"賃金_職種1\""],
         &[
-            "AVG(salary_representative) as avg_salary",
+            &format!("AVG({}) as avg_salary", SALARY_EXPR),
             "COUNT(*) as cnt",
         ],
         &where_clause,
-        extra_cond,
-        "corp_type",
-        "avg_salary DESC",
+        &extra_cond,
+        "\"賃金_職種1\"",
+        "cnt DESC",
     );
 
     let conn = get_conn(db).await?;
@@ -1127,16 +1156,21 @@ pub async fn salary_by_job_type(db: &Database, params: &FilterParams) -> Result<
 pub async fn salary_by_prefecture(db: &Database, params: &FilterParams) -> Result<Value, AppError> {
     let w = WhereBuilder::from_filter_params(params);
     let where_clause = w.to_where_clause();
-    let extra_cond = "salary_representative IS NOT NULL AND salary_representative > 0 AND prefecture IS NOT NULL AND prefecture != ''";
+    let extra_cond = format!(
+        "{sal} BETWEEN {lo} AND {hi} AND prefecture IS NOT NULL AND prefecture != ''",
+        sal = SALARY_EXPR,
+        lo = SALARY_MIN,
+        hi = SALARY_MAX
+    );
 
     let sql = build_grouped_query(
         &["prefecture"],
         &[
-            "AVG(salary_representative) as avg_salary",
+            &format!("AVG({}) as avg_salary", SALARY_EXPR),
             "COUNT(*) as cnt",
         ],
         &where_clause,
-        extra_cond,
+        &extra_cond,
         "prefecture",
         "avg_salary DESC",
     );

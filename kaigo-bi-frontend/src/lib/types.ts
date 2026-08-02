@@ -296,6 +296,10 @@ export interface SalaryKpi {
   min_salary: number | null;
   /** 賃金データ件数（kpi_cacheで追加される場合あり） */
   data_count?: number | null;
+  /** 集計に使えた施設数（賃金_月額1が妥当レンジに入るもの） */
+  sample_count?: number | null;
+  /** 同じフィルタ条件での母集団施設数 */
+  population_count?: number | null;
 }
 
 /** 職種別賃金（バックエンド SalaryByJobType に対応） */
