@@ -947,7 +947,12 @@ pub async fn revenue_kpi(db: &Database, params: &FilterParams) -> Result<Value, 
     let sql = format!(
         "SELECT
             AVG(CAST(COALESCE(NULLIF(kasan_count, ''), NULL) AS REAL)) as avg_kasan,
-            (SUM(CASE WHEN \"加算_処遇改善I\" = 1 OR \"処遇改善加算フラグ\" = '○' THEN 1 ELSE 0 END) * 1.0 /
+            -- \"処遇改善加算フラグ\" は存在しないカラムで、参照するとクエリ全体が
+            -- no such column で失敗していた。加算列は TEXT の '0'/'1' なので文字列比較する。
+            -- I〜IV のいずれかを取得していれば「処遇改善加算あり」とみなす。
+            (SUM(CASE WHEN \"加算_処遇改善I\" = '1' OR \"加算_処遇改善II\" = '1'
+                        OR \"加算_処遇改善III\" = '1' OR \"加算_処遇改善IV\" = '1'
+                      THEN 1 ELSE 0 END) * 1.0 /
                 NULLIF(COUNT(*), 0)) as syogu_rate,
             AVG(CASE WHEN occupancy_rate BETWEEN 0.0 AND 3.0 THEN occupancy_rate END) as avg_occ,
             AVG(CASE WHEN CAST(COALESCE(NULLIF(\"定員\", ''), NULL) AS REAL) BETWEEN 1 AND {cap}
@@ -1163,10 +1168,10 @@ pub async fn quality_kpi(db: &Database, params: &FilterParams) -> Result<Value, 
         "SELECT
             COUNT(*) as facility_count,
             AVG(CAST(COALESCE(NULLIF(quality_score, ''), NULL) AS REAL)) as avg_quality_score,
-            (SUM(CASE WHEN \"品質_BCP策定\" = 1 THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0)) as bcp_rate,
-            (SUM(CASE WHEN \"品質_ICT活用\" = 1 THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0)) as ict_rate,
-            (SUM(CASE WHEN \"品質_第三者評価\" = 1 THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0)) as third_party_rate,
-            (SUM(CASE WHEN \"品質_損害賠償保険\" = 1 THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0)) as insurance_rate
+            (SUM(CASE WHEN \"品質_BCP策定\" = '1' THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0)) as bcp_rate,
+            (SUM(CASE WHEN \"品質_ICT活用\" = '1' THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0)) as ict_rate,
+            (SUM(CASE WHEN \"品質_第三者評価\" = '1' THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0)) as third_party_rate,
+            (SUM(CASE WHEN \"品質_損害賠償保険\" = '1' THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0)) as insurance_rate
         FROM facilities {}",
         where_clause
     );
@@ -1298,10 +1303,10 @@ pub async fn quality_category_radar(db: &Database, params: &FilterParams) -> Res
 
     let sql = format!(
         "SELECT
-            (SUM(CASE WHEN \"品質_BCP策定\" = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as bcp,
-            (SUM(CASE WHEN \"品質_ICT活用\" = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as ict,
-            (SUM(CASE WHEN \"品質_第三者評価\" = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as third_party,
-            (SUM(CASE WHEN \"品質_損害賠償保険\" = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as insurance,
+            (SUM(CASE WHEN \"品質_BCP策定\" = '1' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as bcp,
+            (SUM(CASE WHEN \"品質_ICT活用\" = '1' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as ict,
+            (SUM(CASE WHEN \"品質_第三者評価\" = '1' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as third_party,
+            (SUM(CASE WHEN \"品質_損害賠償保険\" = '1' THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0)) as insurance,
             AVG(CASE WHEN fulltime_ratio BETWEEN 0.0 AND 1.0 THEN fulltime_ratio * 100 END) as fulltime,
             (1.0 - AVG(CASE WHEN turnover_rate BETWEEN 0.0 AND 1.0 THEN turnover_rate END)) * 100 as retention
         FROM facilities {}",
@@ -2514,8 +2519,8 @@ pub async fn dd_report(db: &Database, params: &FilterParams, corp_number: &str) 
             CAST(COALESCE(NULLIF(\"前年度採用数\", ''), '0') AS REAL) as hired,
             CAST(COALESCE(NULLIF(\"前年度退職数\", ''), '0') AS REAL) as left_count,
             \"サービス名\", occupancy_rate,
-            COALESCE(\"品質_BCP策定\", 0) as bcp,
-            COALESCE(\"品質_損害賠償保険\", 0) as insurance,
+            CAST(COALESCE(NULLIF(\"品質_BCP策定\", ''), '0') AS INTEGER) as bcp,
+            CAST(COALESCE(NULLIF(\"品質_損害賠償保険\", ''), '0') AS INTEGER) as insurance,
             \"事業所番号\", \"会計種類\",
             \"財務DL_事業活動計算書\", \"財務DL_資金収支計算書\", \"財務DL_貸借対照表\",
             \"行政処分日\", \"行政処分内容\", \"行政指導日\", \"行政指導内容\",
