@@ -2,15 +2,15 @@
 
 // ===================================================
 // Page 10: 賃金分析
-// 職種別賃金、都道府県別賃金
-// 実API連携版: /api/salary/kpi, /api/salary/by-job-type,
-//              /api/salary/by-prefecture
+// 都道府県別賃金と賃金分布
+// 実API連携版: /api/salary/kpi, /api/salary/by-prefecture
+// 職種別は賃金データの3%にしか職種名が無く統計にならないため廃止（2026-08-03）
 // ===================================================
 
 import { Suspense, useMemo, useState } from "react";
 import { useApi } from "@/hooks/useApi";
 import { useFilters } from "@/hooks/useFilters";
-import type { SalaryKpi, JobTypeWage, PrefectureJobWage, ExternalSalaryBenchmark, ExternalWageHistory } from "@/lib/types";
+import type { SalaryKpi, PrefectureJobWage, ExternalSalaryBenchmark, ExternalWageHistory } from "@/lib/types";
 import { formatManYen } from "@/lib/formatters";
 
 /** 外部統計データの都道府県別賃金 */
@@ -49,12 +49,6 @@ function SalaryContent() {
   // 賃金KPI取得
   const { data: kpi, error: kpiError, isLoading: kpiLoading } = useApi<SalaryKpi>(
     "/api/salary/kpi",
-    apiParams
-  );
-
-  // 職種別賃金
-  const { data: jobTypeWages, error: jobTypeError, isLoading: jobTypeLoading } = useApi<JobTypeWage[]>(
-    "/api/salary/by-job-type",
     apiParams
   );
 
@@ -107,9 +101,11 @@ function SalaryContent() {
       }));
   }, [prefWages]);
 
-  // 賃金分布ヒストグラムデータ: 賃金帯別の職種数
+  // 賃金分布ヒストグラム: 賃金帯ごとの都道府県数
+  // 以前は職種別データを使っていたが、職種名は賃金データの3%にしか付いておらず
+  // 130種に分散していたため分布として成立しなかった（職種別セクションごと廃止）。
   const histogramData = useMemo(() => {
-    if (!jobTypeWages || jobTypeWages.length === 0) return [];
+    if (!prefWages || prefWages.length === 0) return [];
     // 賃金帯ごとに集計
     const bins = [
       { label: "~15万円", min: 0, max: 150000 },
@@ -122,11 +118,11 @@ function SalaryContent() {
     ];
     return bins.map((bin) => ({
       range: bin.label,
-      count: jobTypeWages.filter(
+      count: prefWages.filter(
         (w) => w.avg_salary >= bin.min && w.avg_salary < bin.max
       ).length,
     })).filter((b) => b.count > 0);
-  }, [jobTypeWages]);
+  }, [prefWages]);
 
   // データ充填率の計算
   const dataCountInfo = useMemo(() => {
@@ -144,17 +140,8 @@ function SalaryContent() {
       const rate = ((dataCount / totalEstimate) * 100).toFixed(1);
       return { count: dataCount, total: totalEstimate, rate };
     }
-    // data_count がない場合は、jobTypeWagesのcount合計で推定
-    if (jobTypeWages && jobTypeWages.length > 0) {
-      const totalCount = jobTypeWages.reduce((sum, w) => sum + w.count, 0);
-      if (totalCount > 0) {
-        const totalEstimate = TOTAL_FACILITIES_ESTIMATE;
-        const rate = ((totalCount / totalEstimate) * 100).toFixed(1);
-        return { count: totalCount, total: totalEstimate, rate };
-      }
-    }
     return null;
-  }, [kpi, jobTypeWages]);
+  }, [kpi]);
 
   // 求人給与ベンチマーク（業種x雇用形態別、棒グラフ用）
   // mean_min と mean_max の中間値を平均給与として使用
@@ -187,10 +174,7 @@ function SalaryContent() {
       }));
   }, [wageHistory]);
 
-  // 職種テーブル展開状態
-  const [jobTableExpanded, setJobTableExpanded] = useState(false);
-
-  const apiError = kpiError || jobTypeError || prefError;
+  const apiError = kpiError || prefError;
   const hasRealData = kpi?.avg_salary != null;
 
   return (
@@ -199,7 +183,7 @@ function SalaryContent() {
       <div>
         <h1 className="text-xl font-bold text-gray-900">賃金分析</h1>
         <p className="text-sm text-gray-500 mt-1">
-          職種別賃金水準・地域格差・賃金分布の分析
+          地域別の賃金水準と分布の分析
         </p>
       </div>
 
@@ -267,42 +251,6 @@ function SalaryContent() {
 
       {/* チャートエリア */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* 1. 職種別賃金比較 */}
-        <ChartCard
-          title="職種別 平均賃金"
-          subtitle={
-            jobTypeWages && jobTypeWages.length > 0
-              ? `${jobTypeWages.length}職種 / 計${jobTypeWages
-                  .reduce((s, w) => s + w.count, 0)
-                  .toLocaleString("ja-JP")}施設。職種名は事業所の自由記述で、1職種あたりの件数が少ない点にご注意ください`
-              : "職種の比較棒グラフ"
-          }
-        >
-          {jobTypeLoading ? (
-            <div className="flex items-center justify-center h-[300px] text-gray-400 text-sm">
-              読み込み中...
-            </div>
-          ) : jobTypeWages && jobTypeWages.length > 0 ? (
-            <BarChart
-              data={[...jobTypeWages]
-                .sort((a, b) => b.avg_salary - a.avg_salary)
-                .slice(0, 20)
-                .map((w) => ({ ...w, job_type: `${w.job_type}（n=${w.count}）` }))}
-              xKey="job_type"
-              yKey="avg_salary"
-              color={CHART_COLORS[0]}
-              tooltipFormatter={tooltipManYen}
-              height={300}
-            />
-          ) : (
-            <DataPendingPlaceholder
-              message="賃金データ準備中"
-              description="職種別の平均賃金を比較します"
-              height={300}
-            />
-          )}
-        </ChartCard>
-
         {/* 2. 都道府県別賃金 */}
         <ChartCard
           title="都道府県別 平均賃金（Top 20）"
@@ -383,12 +331,12 @@ function SalaryContent() {
           )}
         </ChartCard>
 
-        {/* 4. 賃金分布（職種別の賃金帯ヒストグラム） */}
+        {/* 4. 賃金分布（都道府県の賃金帯ヒストグラム） */}
         <ChartCard
-          title="職種別 賃金帯分布"
-          subtitle="賃金帯ごとの職種数"
+          title="賃金帯分布"
+          subtitle="賃金帯ごとの都道府県数"
         >
-          {jobTypeLoading ? (
+          {prefLoading ? (
             <div className="flex items-center justify-center h-[300px] text-gray-400 text-sm">
               読み込み中...
             </div>
@@ -398,13 +346,13 @@ function SalaryContent() {
               xKey="range"
               yKey="count"
               color={CHART_COLORS[3]}
-              tooltipFormatter={(v) => `${v}職種`}
+              tooltipFormatter={(v) => `${v}都道府県`}
               height={300}
             />
           ) : (
             <DataPendingPlaceholder
               message="賃金分布データ準備中"
-              description="賃金帯別の職種数分布を表示します"
+              description="賃金帯別の都道府県数を表示します"
               height={300}
             />
           )}
@@ -412,78 +360,6 @@ function SalaryContent() {
       </div>
 
       {/* 職種別賃金詳細テーブル */}
-      <ChartCard
-        title="職種別 賃金詳細"
-        subtitle={jobTypeWages ? `全${jobTypeWages.length}職種の賃金データ` : "賃金分析を行う職種一覧"}
-      >
-        {jobTypeLoading ? (
-          <div className="text-sm text-gray-400 p-4">読み込み中...</div>
-        ) : jobTypeWages && jobTypeWages.length > 0 ? (
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-gray-200 text-left">
-                  <th className="px-4 py-2 text-gray-500 font-medium">職種</th>
-                  <th className="px-4 py-2 text-gray-500 font-medium text-right">平均賃金</th>
-                  <th className="px-4 py-2 text-gray-500 font-medium text-right">データ件数</th>
-                  {jobTypeWages[0]?.avg_age != null && (
-                    <th className="px-4 py-2 text-gray-500 font-medium text-right">平均年齢</th>
-                  )}
-                  {jobTypeWages[0]?.avg_tenure != null && (
-                    <th className="px-4 py-2 text-gray-500 font-medium text-right">平均勤続</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {[...jobTypeWages]
-                  .sort((a, b) => b.avg_salary - a.avg_salary)
-                  .slice(0, jobTableExpanded ? undefined : 10)
-                  .map((w) => (
-                    <tr key={w.job_type} className="border-b border-gray-100 hover:bg-gray-50">
-                      <td className="px-4 py-2.5 text-gray-700 font-medium">{w.job_type}</td>
-                      <td className="px-4 py-2.5 text-right tabular-nums">
-                        <span className="text-emerald-600 font-medium">
-                          {formatManYen(w.avg_salary)}
-                        </span>
-                        <span className="text-gray-400 text-xs ml-1">
-                          ({w.avg_salary.toLocaleString("ja-JP")}円)
-                        </span>
-                      </td>
-                      <td className="px-4 py-2.5 text-right text-gray-500 tabular-nums">
-                        {w.count.toLocaleString("ja-JP")}件
-                      </td>
-                      {jobTypeWages[0]?.avg_age != null && (
-                        <td className="px-4 py-2.5 text-right text-gray-500 tabular-nums">
-                          {w.avg_age != null ? `${w.avg_age.toFixed(1)}歳` : "--"}
-                        </td>
-                      )}
-                      {jobTypeWages[0]?.avg_tenure != null && (
-                        <td className="px-4 py-2.5 text-right text-gray-500 tabular-nums">
-                          {w.avg_tenure ?? "--"}
-                        </td>
-                      )}
-                    </tr>
-                  ))}
-              </tbody>
-            </table>
-            {jobTypeWages.length > 10 && (
-              <div className="flex justify-center pt-3 pb-1">
-                <button
-                  onClick={() => setJobTableExpanded((prev) => !prev)}
-                  className="text-sm text-indigo-600 hover:text-indigo-800 font-medium px-4 py-1.5 rounded-lg hover:bg-indigo-50 transition-colors"
-                >
-                  {jobTableExpanded ? "折りたたむ" : `もっと見る（全${jobTypeWages.length}件）`}
-                </button>
-              </div>
-            )}
-          </div>
-        ) : (
-          <div className="space-y-2 p-4">
-            <p className="text-sm text-gray-400">職種別の賃金データは準備中です</p>
-          </div>
-        )}
-      </ChartCard>
-
       {/* 外部統計データセクション（補足情報） */}
       {externalWageData.length > 0 && prefWages && prefWages.length > 0 && (
         <ChartCard
