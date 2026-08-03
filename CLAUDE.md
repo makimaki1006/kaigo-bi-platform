@@ -888,7 +888,7 @@ python scripts/export_salesforce.py
 | バックエンド | Rust/Axum + libsql (Turso) | `kaigo-bi-backend/` |
 | ETL | Python (pandas) | `scripts/aggregate_to_cache.py` |
 | DB | Turso (LibSQL) x 2 | 施設データ + 外部統計 |
-| デプロイ | Docker + Render (Free plan) | `.github/workflows/docker-build.yml` |
+| デプロイ | Docker + Render (Starter $7) | `.github/workflows/docker-build.yml` |
 
 #### データフロー
 
@@ -903,10 +903,44 @@ python scripts/export_salesforce.py
 | `scripts/scrape_kaigo_full.py` | 介護情報公表システム全国スクレイピング |
 | `scripts/scrape_kihon_delta.py` | 詳細ページ差分スクレイピング（15並列） |
 | `scripts/merge_kihon_and_reload.py` | CSV結合→Tursoアップロード→再集計 |
-| `scripts/aggregate_to_cache.py` | 事前集計パイプライン（36キー） |
+| `scripts/aggregate_to_cache.py` | 事前集計パイプライン（37キー・**約27分**） |
 | `scripts/upload_full_services_to_turso.py` | Tursoへのデータアップロード |
 | `scripts/e2e_test_comprehensive.py` | 包括的E2Eテスト（45項目） |
 | `scripts/turso_helpers.py` | Turso DB共通ヘルパー |
+| `scripts/geocode_facilities.py` | 国交省 位置参照情報で緯度経度を付与（91.2%） |
+| `scripts/geocode_fallback_gsi.py` | 残りを国土地理院APIで補完（→99.0%・約3時間） |
+| `scripts/build_search_index.py` | 施設名の全文検索索引 FTS5 trigram |
+| `scripts/build_corp_summary.py` | 法人単位の事前集計（68,563法人） |
+| `scripts/build_facility_metrics.py` | ベンチマーク8指標をREAL化 |
+| `scripts/build_indexes.py` | 集計クエリ用のカバリング索引（冪等） |
+
+#### 🔴 性能の前提（2026-08-03 に整備）
+
+`facilities` は 223,103 行あり、**素朴なクエリは全表スキャンで数十秒〜数分かかる**。
+以下の事前集計テーブル・索引が前提になっている（無くてもアプリは動くが極端に遅い）。
+
+| オブジェクト | 無いとどうなるか |
+|---|---|
+| `facilities_fts` | 施設名検索が 57 秒（LIKE '%q%' に索引は効かない） |
+| `corp_summary` | M&Aスクリーニングが数分、DD法人検索が 138 秒 |
+| `facility_metrics` | ベンチマークが 73 秒（TEXT列のCASTが索引を殺す） |
+| `build_indexes.py` の索引 | 採用天気図が 47 秒 |
+
+**Turso はリモート実行で1クエリ約2秒のオーバーヘッドがある。**
+クエリを細かく分割しすぎると却って遅くなる。
+
+#### 🔴 データ品質の実測値（誇張しないこと）
+
+| データ | 充足率 |
+|---|---|
+| 住所 | 100%（書式は不揃い） |
+| 座標 | **99.0%**（220,865件） |
+| 事業年数 | 75.5%（異常値 -2979〜1804 を除外後） |
+| 賃金 | **2.3%**（5,092施設 / 11,016レコード） |
+| 決算データ | **0.05%**（24法人。PDFリンクは45,118法人分あり解析待ち） |
+
+既知の異常値: 定員欄に日付（`20251215`）が97件、賃金に `25万円` `250,000` 表記。
+いずれも取り込み側で正規化済み。**新しい集計を書くときは同じ足切りを入れること。**
 
 #### 環境変数（必須）
 
@@ -920,24 +954,49 @@ python scripts/export_salesforce.py
 
 #### 運用手順
 
-**データ更新時:**
+**データ更新時（この順で実行する）:**
 ```bash
+$env:TURSO_DATABASE_URL = "..."
+$env:TURSO_AUTH_TOKEN = "..."
+
 # 1. スクレイピング（6-12時間）
 python scripts/scrape_kihon_delta.py
 
-# 2. マージ→アップロード→再集計
-$env:TURSO_DATABASE_URL = "..."
-$env:TURSO_AUTH_TOKEN = "..."
+# 2. マージ→アップロード
 python scripts/merge_kihon_and_reload.py
 
-# 3. ビルド→デプロイ
-# GitHub Actions > Run workflow > Render自動pull
+# 3. 座標・索引・事前集計を作り直す（施設データが変わったら必須）
+python scripts/geocode_facilities.py --match --apply    # 位置参照情報
+python scripts/geocode_fallback_gsi.py                  # 国土地理院で補完（約3時間）
+python scripts/build_search_index.py --refresh
+python scripts/build_corp_summary.py --refresh
+python scripts/build_facility_metrics.py --refresh
+python scripts/build_indexes.py --build                 # 冪等
+python scripts/aggregate_to_cache.py                    # kpi_cache（約27分）
+
+# 4. ビルド→デプロイ
+gh workflow run "Build and Push Docker Image"
+curl "https://api.render.com/deploy/srv-d70c6t1r0fns73coo3gg?key=mSX7Y-1StB8"
 ```
 
 **テスト:**
 ```bash
 python scripts/e2e_test_comprehensive.py
 ```
+
+#### 現状サマリ
+
+📋 **`claudedocs/KAIGO_BI_STATUS_20260803.md`** — アーキテクチャ・性能・データ品質・
+判断済み事項・残課題の一覧。**kaigo-bi を触る前に読むこと。**
+
+個別レポート: `FIXES_20260802.md` / `GEOCODING_20260802.md` / `PERF_AND_VERIFY_20260803.md`
+
+#### ローンチ前に必須（未着手）
+
+- **特商法に基づく運営者情報**・利用規約・プライバシーポリシーの実ページ
+  （有料課金を開始する前に法的に必須）
+- 独自ドメイン + Search Console、og:image
+- Stripe本番キー、Resendドメイン認証
 
 ---
 
