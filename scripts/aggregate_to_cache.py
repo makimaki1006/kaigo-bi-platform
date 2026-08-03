@@ -293,7 +293,9 @@ def agg_dashboard_kpi(df):
     fr = fr[(fr >= 0) & (fr <= 1)]
     avg_fr = round_safe(fr.mean())
 
-    avg_years = round_safe(df["years_in_business"].dropna().mean())
+    # 異常値(min -2979 / max 1804)を除いた平均。valid_years と同じ基準
+    _y = df["years_in_business"].dropna()
+    avg_years = round_safe(_y[(_y > 0) & (_y <= 100)].mean())
 
     avg_kasan = round_safe(df["kasan_count"].mean()) if "kasan_count" in df.columns else None
 
@@ -1079,20 +1081,33 @@ def agg_quality_by_prefecture(df):
     ]
 
 
+def valid_years(df):
+    """事業年数のうち妥当な値だけを返す。
+
+    years_in_business には事業開始日のパース失敗由来の異常値が混じる
+    （実測 min -2979 / max 1804）。放置すると最長事業年数が 1804年、
+    設立年トレンドに 222年・5005年 が現れる。Rust 側と同じ 0超〜100年で絞る。
+    """
+    yib = df["years_in_business"].dropna()
+    return yib[(yib > 0) & (yib <= 100)]
+
+
 def agg_growth_kpi(df):
     """growth_kpi: 成長KPI"""
-    yib = df["years_in_business"].dropna()
+    yib = valid_years(df)
     return {
         "total_facilities": len(df),
         "new_facilities_5yr": int((yib <= 5).sum()) if len(yib) > 0 else 0,
         "avg_years": round_safe(yib.mean()),
         "oldest_years": round_safe(yib.max()),
+        # 事業年数が取れた施設数（母数の明示）
+        "facilities_with_years": int(len(yib)),
     }
 
 
 def agg_growth_trend(df):
     """growth_trend: 設立年別件数"""
-    yib = df["years_in_business"].dropna()
+    yib = valid_years(df)
     est_year = (datetime.now().year - yib).astype(int)
     grouped = est_year.value_counts().sort_index()
 
@@ -1104,7 +1119,7 @@ def agg_growth_trend(df):
 
 def agg_growth_years_dist(df):
     """growth_years_dist: 事業年数分布"""
-    yib = df["years_in_business"].dropna()
+    yib = valid_years(df)
     bins = [
         ("0-5年", 0, 5),
         ("5-10年", 5, 10),
