@@ -22,6 +22,7 @@
 import type { Metadata } from "next";
 import { absoluteUrl } from "@/lib/site";
 import { SEO_CONTENT_APPROVED } from "@/lib/site";
+import { hasUnsetOperatorFields } from "@/lib/legal";
 
 interface PublicMetadataInput {
   /** サイト内の絶対パス（例: "/pricing"）。canonical/OG URLの基準になる */
@@ -60,5 +61,21 @@ export function buildPublicMetadata({
       url,
       type: "website",
     },
+  };
+}
+
+/**
+ * 法務ページ（利用規約・プライバシーポリシー）用の Metadata。
+ *
+ * 事業者名や連絡先が「（未設定）」のまま検索結果に載ると、
+ * 実在しない事業者情報を掲示しているのと同じ状態になる。
+ * OPERATOR が埋まるまでは noindex にする。
+ */
+export function buildLegalMetadata(input: PublicMetadataInput): Metadata {
+  const base = buildPublicMetadata(input);
+  if (!hasUnsetOperatorFields()) return base;
+  return {
+    ...base,
+    robots: { index: false, follow: true },
   };
 }

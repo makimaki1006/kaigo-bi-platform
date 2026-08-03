@@ -10,12 +10,18 @@
 
 import type { MetadataRoute } from "next";
 import { absoluteUrl, SEO_CONTENT_APPROVED } from "@/lib/site";
-import { PUBLIC_SEO_PATHS } from "@/lib/public-paths";
+import { PUBLIC_SEO_PATHS, LEGAL_PATHS } from "@/lib/public-paths";
+import { hasUnsetOperatorFields } from "@/lib/legal";
 
 export default function sitemap(): MetadataRoute.Sitemap {
   if (!SEO_CONTENT_APPROVED) return [];
 
-  return PUBLIC_SEO_PATHS.map((path) => ({
+  // 事業者情報が「（未設定）」のままの法務ページは載せない
+  const paths: readonly string[] = hasUnsetOperatorFields()
+    ? PUBLIC_SEO_PATHS
+    : [...PUBLIC_SEO_PATHS, ...LEGAL_PATHS];
+
+  return paths.map((path) => ({
     url: absoluteUrl(path),
   }));
 }

@@ -5,6 +5,9 @@ const FOOTER_LINKS = [
   { href: "/data", label: "収録データ" },
   { href: "/methodology", label: "指標の定義" },
   { href: "/pricing", label: "料金" },
+  { href: "/terms", label: "利用規約" },
+  { href: "/privacy", label: "プライバシーポリシー" },
+  { href: "/legal", label: "特定商取引法に基づく表記" },
 ] as const;
 
 export default function PublicFooter() {
@@ -32,9 +35,7 @@ export default function PublicFooter() {
             </ul>
           </nav>
         </div>
-        <p className={styles.footerFinePrint}>
-          © {year} kaigo-bi · 利用規約・プライバシーポリシー・運営者情報は準備中です。
-        </p>
+        <p className={styles.footerFinePrint}>© {year} kaigo-bi</p>
       </div>
     </footer>
   );
