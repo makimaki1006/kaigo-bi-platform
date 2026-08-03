@@ -21,14 +21,21 @@ logger = logging.getLogger(__name__)
 
 
 def get_turso_config():
-    """Turso接続情報を環境変数から取得。未設定時はエラー"""
+    """Turso接続情報を環境変数から取得。未設定時はエラー
+
+    TURSO_DATABASE_URL は libsql:// 形式で配布されることが多いが、
+    ここでは HTTP API (v2/pipeline) を叩くため https:// へ直す。
+    変換しないと requests が InvalidSchema で落ちる。
+    """
     url = os.environ.get("TURSO_DATABASE_URL")
     token = os.environ.get("TURSO_AUTH_TOKEN")
     if not url:
         raise ValueError("TURSO_DATABASE_URL environment variable is required")
     if not token:
         raise ValueError("TURSO_AUTH_TOKEN environment variable is required")
-    return url, token
+    if url.startswith("libsql://"):
+        url = "https://" + url[len("libsql://"):]
+    return url.rstrip("/"), token
 
 
 def get_headers(token):
