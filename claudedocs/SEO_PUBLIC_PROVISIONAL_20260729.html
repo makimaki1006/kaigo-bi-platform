@@ -1,0 +1,295 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="description" content="kaigo-biは、介護業界の公開情報を検索・比較・分析できるビジネスデータサービスです。経営支援、営業支援、M&Aの初期調査に活用できます。">
+  <link rel="canonical" href="https://kaigo-bi.onrender.com/">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="ja_JP">
+  <meta property="og:site_name" content="kaigo-bi">
+  <meta property="og:title" content="kaigo-bi｜介護業界の公開情報をビジネスに">
+  <meta property="og:description" content="介護業界の公開情報を、経営分析・営業・M&Aの初期調査に活用できる形へ。">
+  <title>kaigo-bi｜介護業界の公開情報をビジネスに</title>
+  <style>
+    :root {
+      --brand:#2563eb; --brand-dark:#1d4ed8; --brand-soft:#eff6ff;
+      --ink:#0f172a; --text:#475569; --line:#e2e8f0; --surface:#f8fafc;
+    }
+    * { box-sizing:border-box }
+    html { scroll-behavior:smooth }
+    body { margin:0; color:var(--ink); background:#fff; font-family:Inter,"Noto Sans JP","Yu Gothic",sans-serif; line-height:1.75 }
+    a { color:inherit; text-decoration:none }
+    .container { width:min(1120px,calc(100% - 40px)); margin:auto }
+    header { position:sticky; top:0; z-index:20; background:rgba(255,255,255,.94); backdrop-filter:blur(12px); border-bottom:1px solid var(--line) }
+    .header-inner { min-height:70px; display:flex; align-items:center; justify-content:space-between; gap:24px }
+    .logo { font-size:22px; font-weight:900; letter-spacing:-.04em }
+    .logo span { color:var(--brand) }
+    nav { display:flex; align-items:center; gap:25px; color:#475569; font-size:14px }
+    nav a:hover { color:var(--brand) }
+    .actions { display:flex; gap:10px }
+    .btn { display:inline-flex; align-items:center; justify-content:center; min-height:44px; padding:0 19px; border-radius:9px; font-size:14px; font-weight:800; border:1px solid transparent }
+    .btn-primary { color:#fff; background:var(--brand) }
+    .btn-primary:hover { background:var(--brand-dark) }
+    .btn-outline { color:var(--brand-dark); border-color:#bfdbfe; background:#fff }
+    .hero { overflow:hidden; background:linear-gradient(180deg,var(--brand-soft),#fff) }
+    .hero-inner { padding:96px 0 82px; text-align:center }
+    .eyebrow { color:var(--brand); font-size:12px; font-weight:900; letter-spacing:.12em; text-transform:uppercase }
+    h1 { max-width:900px; margin:12px auto 24px; font-size:clamp(38px,6vw,64px); line-height:1.12; letter-spacing:-.05em }
+    .lead { max-width:760px; margin:0 auto; color:var(--text); font-size:18px }
+    .hero-actions { display:flex; justify-content:center; gap:12px; margin-top:32px }
+    .hero-note { margin-top:18px; color:#64748b; font-size:12px }
+    section { padding:78px 0 }
+    section.alt { background:var(--surface) }
+    .section-head { max-width:750px; margin:0 auto 38px; text-align:center }
+    .section-head h2 { margin:0 0 12px; font-size:34px; line-height:1.3; letter-spacing:-.03em }
+    .section-head p { margin:0; color:var(--text) }
+    .grid { display:grid; gap:20px }
+    .grid-3 { grid-template-columns:repeat(3,minmax(0,1fr)) }
+    .grid-4 { grid-template-columns:repeat(4,minmax(0,1fr)) }
+    .card { padding:26px; background:#fff; border:1px solid var(--line); border-radius:17px; box-shadow:0 10px 32px rgba(15,23,42,.04) }
+    .card h3 { margin:0 0 9px; font-size:19px }
+    .card p { margin:0; color:var(--text); font-size:14px }
+    .icon { width:42px; height:42px; display:grid; place-items:center; margin-bottom:17px; color:var(--brand); background:var(--brand-soft); border-radius:12px; font-weight:900 }
+    .feature-list { margin:20px 0 0; padding:0; list-style:none; display:grid; gap:11px }
+    .feature-list li { position:relative; padding-left:23px; color:var(--text); font-size:14px }
+    .feature-list li::before { content:"✓"; position:absolute; left:0; color:var(--brand); font-weight:900 }
+    .flow { counter-reset:flow }
+    .flow .card { position:relative; padding-left:72px }
+    .flow .card::before { counter-increment:flow; content:counter(flow); position:absolute; left:25px; top:27px; width:31px; height:31px; display:grid; place-items:center; color:#fff; background:var(--brand); border-radius:50%; font-weight:900 }
+    .trust { display:grid; grid-template-columns:1fr 1fr; gap:40px; align-items:center }
+    .trust h2 { margin:0 0 16px; font-size:34px; line-height:1.3; letter-spacing:-.03em }
+    .trust p { color:var(--text) }
+    .trust-panel { padding:28px; background:#fff; border:1px solid var(--line); border-radius:18px }
+    .trust-panel dl { margin:0; display:grid; gap:18px }
+    .trust-panel dt { font-weight:850 }
+    .trust-panel dd { margin:3px 0 0; color:var(--text); font-size:14px }
+    .price-card { display:flex; flex-direction:column }
+    .price-card.featured { border:2px solid var(--brand); transform:translateY(-8px) }
+    .price { display:flex; align-items:baseline; gap:5px; margin:14px 0 20px }
+    .price strong { font-size:33px; line-height:1 }
+    .price span { color:#64748b; font-size:12px }
+    .price-card .btn { margin-top:auto }
+    .faq details { max-width:860px; margin:0 auto 11px; padding:18px 20px; background:#fff; border:1px solid var(--line); border-radius:12px }
+    .faq summary { cursor:pointer; font-weight:850 }
+    .faq p { margin:10px 0 0; color:var(--text) }
+    .cta { color:#fff; background:#0f172a; text-align:center }
+    .cta h2 { margin:0 0 12px; font-size:36px }
+    .cta p { max-width:680px; margin:0 auto 28px; color:#cbd5e1 }
+    footer { padding:45px 0; color:#94a3b8; background:#020617; font-size:13px }
+    .footer-inner { display:flex; justify-content:space-between; gap:30px }
+    @media(max-width:900px) {
+      nav { display:none }
+      .grid-3,.grid-4,.trust { grid-template-columns:1fr }
+      .price-card.featured { transform:none }
+    }
+    @media(max-width:600px) {
+      .actions .btn-outline { display:none }
+      .hero-inner { padding:68px 0 60px }
+      .hero-actions { flex-direction:column }
+      section { padding:58px 0 }
+      .footer-inner { flex-direction:column }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container header-inner">
+      <a class="logo" href="#">kaigo<span>-bi</span></a>
+      <nav aria-label="メインナビゲーション">
+        <a href="#features">機能</a>
+        <a href="#usecases">活用方法</a>
+        <a href="#data">データについて</a>
+        <a href="#pricing">料金</a>
+      </nav>
+      <div class="actions">
+        <a class="btn btn-outline" href="https://kaigo-bi.onrender.com/login">ログイン</a>
+        <a class="btn btn-primary" href="https://kaigo-bi.onrender.com/signup">無料で始める</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container hero-inner">
+        <div class="eyebrow">介護業界向けビジネスデータ</div>
+        <h1>介護業界の公開情報を、<br>ビジネスに使える形へ。</h1>
+        <p class="lead">
+          kaigo-biは、介護事業所や運営法人に関する公開情報を検索・比較・分析できるサービスです。
+          経営分析、営業先の検討、M&amp;Aの初期調査を一つの画面で支援します。
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="https://kaigo-bi.onrender.com/signup">無料で始める</a>
+          <a class="btn btn-outline" href="#features">機能を見る</a>
+        </div>
+        <div class="hero-note">無料登録後、利用可能な機能をすぐに確認できます。</div>
+      </div>
+    </section>
+
+    <section id="usecases">
+      <div class="container">
+        <div class="section-head">
+          <h2>目的に合わせて、必要な情報へ</h2>
+          <p>介護業界を見る立場によって異なる調査や比較を、それぞれの業務に合った形で支援します。</p>
+        </div>
+        <div class="grid grid-3">
+          <article class="card">
+            <div class="icon">経</div>
+            <h3>介護事業の経営支援</h3>
+            <p>地域やサービス種別を軸に、周辺市場と事業所の公開情報を確認。経営課題を検討するための材料を整理できます。</p>
+          </article>
+          <article class="card">
+            <div class="icon">営</div>
+            <h3>介護業界への営業支援</h3>
+            <p>地域、サービス、法人属性などの条件から、営業対象となる事業所や法人を探す作業を効率化します。</p>
+          </article>
+          <article class="card">
+            <div class="icon">M</div>
+            <h3>M&amp;Aの初期調査</h3>
+            <p>法人と事業所の関係や公開情報を横断して確認し、候補探索と初期的な情報整理を支援します。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="features" class="alt">
+      <div class="container">
+        <div class="section-head">
+          <h2>情報収集から比較までを、一つのサービスで</h2>
+          <p>複数の公開ページを行き来していた調査を、検索・一覧・分析画面にまとめます。</p>
+        </div>
+        <div class="grid grid-3">
+          <article class="card">
+            <div class="icon">01</div>
+            <h3>市場を把握する</h3>
+            <p>地域やサービス種別ごとの事業所分布を確認し、介護市場の特徴を捉えます。</p>
+            <ul class="feature-list">
+              <li>地域別・サービス別の確認</li>
+              <li>市場構成の可視化</li>
+              <li>条件を変えた比較</li>
+            </ul>
+          </article>
+          <article class="card">
+            <div class="icon">02</div>
+            <h3>法人・事業所を探す</h3>
+            <p>目的に合った条件を指定し、調査対象となる法人や事業所を絞り込みます。</p>
+            <ul class="feature-list">
+              <li>複数条件による検索</li>
+              <li>法人と事業所の情報整理</li>
+              <li>候補の比較</li>
+            </ul>
+          </article>
+          <article class="card">
+            <div class="icon">03</div>
+            <h3>次のアクションへつなげる</h3>
+            <p>閲覧だけで終わらず、営業候補や調査対象の整理につなげられます。</p>
+            <ul class="feature-list">
+              <li>候補リストの作成</li>
+              <li>CSV出力</li>
+              <li>初期調査の効率化</li>
+            </ul>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="container">
+        <div class="section-head">
+          <h2>利用までの流れ</h2>
+          <p>専門的な操作を覚えることなく、調べたい条件から始められます。</p>
+        </div>
+        <div class="grid grid-3 flow">
+          <article class="card"><h3>アカウントを作成</h3><p>無料登録して、kaigo-biへログインします。</p></article>
+          <article class="card"><h3>目的と条件を選択</h3><p>経営、営業、M&amp;Aなどの目的に合わせて情報を検索します。</p></article>
+          <article class="card"><h3>比較・検討に活用</h3><p>表示された公開情報を、社内検討や次の調査に活用します。</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="data" class="alt">
+      <div class="container trust">
+        <div>
+          <h2>公開情報を、分かりやすく整理</h2>
+          <p>
+            kaigo-biは、介護事業所や運営法人について公開されている情報をもとに、
+            検索・比較・分析しやすい形で提供します。
+          </p>
+          <p>
+            表示される情報には、公開元の記載状況によって未掲載・未取得の項目が含まれる場合があります。
+            重要な判断では、公開元の情報や専門家による確認とあわせてご利用ください。
+          </p>
+        </div>
+        <div class="trust-panel">
+          <dl>
+            <div><dt>出典を意識した表示</dt><dd>公開情報をもとにしたサービスであることが分かるよう、情報の由来を意識して設計します。</dd></div>
+            <div><dt>取得できない情報を区別</dt><dd>情報が確認できない場合は、実際の値が0であることとは区別して扱います。</dd></div>
+            <div><dt>意思決定を補助</dt><dd>本サービスの分析は検討材料を提供するもので、専門的な診断やデューデリジェンスを代替するものではありません。</dd></div>
+          </dl>
+        </div>
+      </div>
+    </section>
+
+    <section id="pricing">
+      <div class="container">
+        <div class="section-head">
+          <h2>料金プラン</h2>
+          <p>まずは無料で試し、利用目的に合わせてプランを選択できます。</p>
+        </div>
+        <div class="grid grid-4">
+          <article class="card price-card">
+            <h3>Free</h3>
+            <div class="price"><strong>0円</strong><span>/月</span></div>
+            <ul class="feature-list"><li>基本機能</li><li>サービスの試用</li></ul>
+            <a class="btn btn-outline" href="https://kaigo-bi.onrender.com/signup">無料で始める</a>
+          </article>
+          <article class="card price-card">
+            <h3>Standard</h3>
+            <div class="price"><strong>9,800円</strong><span>/月・税別</span></div>
+            <ul class="feature-list"><li>市場・事業所分析</li><li>経営支援機能</li></ul>
+            <a class="btn btn-outline" href="https://kaigo-bi.onrender.com/signup">登録して確認</a>
+          </article>
+          <article class="card price-card featured">
+            <h3>Pro</h3>
+            <div class="price"><strong>29,800円</strong><span>/月・税別</span></div>
+            <ul class="feature-list"><li>Standardの機能</li><li>営業リスト・CSV出力</li></ul>
+            <a class="btn btn-primary" href="https://kaigo-bi.onrender.com/signup">登録して確認</a>
+          </article>
+          <article class="card price-card">
+            <h3>M&amp;A</h3>
+            <div class="price"><strong>49,800円</strong><span>/月・税別</span></div>
+            <ul class="feature-list"><li>候補スクリーニング</li><li>初期調査支援</li></ul>
+            <a class="btn btn-outline" href="https://kaigo-bi.onrender.com/signup">登録して確認</a>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="alt faq">
+      <div class="container">
+        <div class="section-head"><h2>よくある質問</h2></div>
+        <details><summary>無料で試せますか？</summary><p>はい。Freeプランでアカウントを作成し、サービスをお試しいただけます。</p></details>
+        <details><summary>どのような人が利用できますか？</summary><p>介護事業者、介護業界へ商品・サービスを提供する企業、M&amp;A仲介会社や事業開発担当者などを想定しています。</p></details>
+        <details><summary>表示される情報はそのまま判断に使えますか？</summary><p>公開情報を調査・比較するための参考情報としてご利用ください。契約、投資、M&amp;Aなど重要な判断では、公開元の確認や専門家による調査が必要です。</p></details>
+        <details><summary>有料プランはいつでも変更できますか？</summary><p>契約やプラン変更に関する詳細は、アカウント作成後の料金・契約画面でご確認ください。</p></details>
+      </div>
+    </section>
+
+    <section class="cta">
+      <div class="container">
+        <h2>介護業界の情報収集を、今日から効率化。</h2>
+        <p>まずは無料アカウントで、kaigo-biの検索・分析画面をご確認ください。</p>
+        <a class="btn btn-primary" href="https://kaigo-bi.onrender.com/signup">無料で始める</a>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container footer-inner">
+      <strong>kaigo-bi</strong>
+      <span>介護業界向けビジネスデータサービス</span>
+      <span>© 2026 kaigo-bi</span>
+    </div>
+  </footer>
+</body>
+</html>

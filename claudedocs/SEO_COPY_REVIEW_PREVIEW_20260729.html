@@ -1,0 +1,284 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="robots" content="noindex,nofollow">
+  <title>kaigo-bi 公開サイト文面レビュー</title>
+  <style>
+    :root {
+      --brand-50:#eef6ff; --brand-100:#dbeafe; --brand-600:#2563eb; --brand-700:#1d4ed8;
+      --ink:#111827; --muted:#64748b; --line:#e5e7eb; --surface:#f8fafc;
+      --warn-bg:#fffbeb; --warn:#92400e; --warn-line:#f59e0b;
+    }
+    * { box-sizing:border-box }
+    html { scroll-behavior:smooth }
+    body { margin:0; color:var(--ink); background:white; font-family:Inter,"Noto Sans JP","Yu Gothic",sans-serif; line-height:1.75 }
+    a { color:inherit }
+    button { font:inherit }
+    .reviewbar { position:sticky; top:0; z-index:50; display:flex; gap:12px; align-items:center; justify-content:center; padding:9px 16px; color:#78350f; background:#fef3c7; border-bottom:1px solid #f59e0b; font-size:13px; font-weight:700 }
+    .reviewbar span { font-weight:400 }
+    .header { position:sticky; top:43px; z-index:40; background:rgba(255,255,255,.94); backdrop-filter:blur(12px); border-bottom:1px solid var(--line) }
+    .header-inner,.footer-inner,.container { width:min(1120px,calc(100% - 40px)); margin:auto }
+    .header-inner { min-height:68px; display:flex; align-items:center; justify-content:space-between; gap:20px }
+    .logo { font-weight:900; font-size:21px; text-decoration:none; letter-spacing:-.03em }
+    .logo i { color:var(--brand-600); font-style:normal }
+    .nav { display:flex; gap:24px; align-items:center; font-size:14px }
+    .nav button { border:0; background:none; color:#475569; cursor:pointer; padding:8px 0 }
+    .nav button:hover { color:var(--brand-600) }
+    .actions { display:flex; gap:10px; align-items:center }
+    .btn { display:inline-flex; align-items:center; justify-content:center; border-radius:9px; padding:10px 17px; font-size:14px; font-weight:750; text-decoration:none; border:1px solid transparent; cursor:pointer }
+    .btn-primary { color:white; background:var(--brand-600) }
+    .btn-primary:hover { background:var(--brand-700) }
+    .btn-outline { color:var(--brand-700); border-color:#bfdbfe; background:white }
+    main { min-height:70vh }
+    .page { display:none }
+    .page.active { display:block }
+    .hero { background:linear-gradient(180deg,var(--brand-50),white); border-bottom:1px solid #f1f5f9 }
+    .hero .container { padding:82px 0 72px; text-align:center }
+    .eyebrow { color:var(--brand-600); text-transform:uppercase; letter-spacing:.09em; font-size:12px; font-weight:850 }
+    h1 { max-width:840px; margin:10px auto 22px; font-size:clamp(34px,5vw,58px); line-height:1.14; letter-spacing:-.045em }
+    .lead { max-width:760px; margin:0 auto; color:#526174; font-size:17px }
+    .hero-actions { display:flex; justify-content:center; gap:12px; margin-top:30px }
+    section { padding:72px 0 }
+    section.alt { background:var(--surface) }
+    .section-head { max-width:720px; margin:0 auto 34px; text-align:center }
+    .section-head h2 { margin:0 0 10px; font-size:31px; line-height:1.3; letter-spacing:-.025em }
+    .section-head p { margin:0; color:var(--muted) }
+    .grid { display:grid; gap:18px }
+    .grid-3 { grid-template-columns:repeat(3,minmax(0,1fr)) }
+    .grid-4 { grid-template-columns:repeat(4,minmax(0,1fr)) }
+    .card { padding:24px; background:white; border:1px solid var(--line); border-radius:16px; box-shadow:0 8px 30px rgba(15,23,42,.04) }
+    .card h3 { margin:0 0 8px; font-size:18px }
+    .card p { margin:0; color:var(--muted); font-size:14px }
+    .card .link { display:inline-block; margin-top:16px; color:var(--brand-600); font-weight:750; font-size:14px; cursor:pointer }
+    .metric { text-align:center }
+    .metric strong { display:block; font-size:30px; line-height:1.2 }
+    .metric span { color:var(--muted); font-size:13px }
+    .fix { position:relative; text-decoration:underline 2px dotted var(--warn-line); text-underline-offset:4px; background:linear-gradient(transparent 58%,#fef3c7 58%) }
+    .fix::after { content:"要FIX"; margin-left:5px; padding:1px 5px; border-radius:4px; color:var(--warn); background:var(--warn-bg); border:1px solid #fde68a; font-size:9px; font-weight:900; vertical-align:middle; white-space:nowrap }
+    .notice { max-width:880px; margin:0 auto; padding:16px 18px; color:#475569; background:white; border:1px solid var(--line); border-radius:12px; font-size:13px }
+    .notice.warn { color:var(--warn); background:var(--warn-bg); border-color:#fde68a }
+    .list { margin:0; padding:0; list-style:none; display:grid; gap:11px }
+    .list li { position:relative; padding-left:24px; color:#475569 }
+    .list li::before { content:"✓"; position:absolute; left:0; color:var(--brand-600); font-weight:900 }
+    .steps { counter-reset:step }
+    .steps .card { position:relative; padding-left:68px }
+    .steps .card::before { counter-increment:step; content:counter(step); position:absolute; left:22px; top:22px; width:30px; height:30px; display:grid; place-items:center; border-radius:50%; color:white; background:var(--brand-600); font-weight:900 }
+    .price { display:flex; align-items:baseline; gap:5px; margin:12px 0 18px }
+    .price strong { font-size:34px }
+    .price span { color:var(--muted); font-size:13px }
+    .price-card.featured { border:2px solid var(--brand-600); transform:translateY(-8px) }
+    table { width:100%; border-collapse:collapse; background:white; border:1px solid var(--line); font-size:14px }
+    th,td { padding:14px 16px; border-bottom:1px solid var(--line); vertical-align:top; text-align:left }
+    th { width:28%; background:#f8fafc }
+    .faq details { max-width:840px; margin:0 auto 10px; padding:17px 20px; border:1px solid var(--line); border-radius:12px; background:white }
+    .faq summary { cursor:pointer; font-weight:800 }
+    .faq p { color:var(--muted); margin:10px 0 0 }
+    .cta { text-align:center; color:white; background:#0f172a }
+    .cta h2 { margin:0 0 12px; font-size:34px }
+    .cta p { margin:0 auto 25px; max-width:680px; color:#cbd5e1 }
+    .footer { padding:42px 0; color:#94a3b8; background:#020617; font-size:13px }
+    .footer-inner { display:flex; justify-content:space-between; gap:30px }
+    .page-switcher { position:fixed; right:18px; bottom:18px; z-index:60; width:245px; padding:14px; border:1px solid #cbd5e1; border-radius:14px; background:white; box-shadow:0 18px 45px rgba(15,23,42,.2) }
+    .page-switcher strong { display:block; margin-bottom:8px; font-size:12px }
+    .page-switcher select { width:100%; padding:9px; border:1px solid #cbd5e1; border-radius:8px; background:white }
+    .legend { margin-top:9px; color:#64748b; font-size:10px; line-height:1.45 }
+    @media(max-width:860px) {
+      .nav { display:none }
+      .grid-3,.grid-4 { grid-template-columns:1fr }
+      .price-card.featured { transform:none }
+      .header .btn-outline { display:none }
+      .hero .container { padding:58px 0 }
+      section { padding:54px 0 }
+      .footer-inner { flex-direction:column }
+      .page-switcher { right:10px; bottom:10px; width:210px }
+    }
+  </style>
+</head>
+<body>
+  <div class="reviewbar">公開コピー確認用プレビュー <span>点線＋「要FIX」は対外公開前に確定が必要な記述です</span></div>
+  <header class="header">
+    <div class="header-inner">
+      <button class="logo" data-page="top" style="border:0;background:none;cursor:pointer">kaigo<i>-bi</i></button>
+      <nav class="nav" aria-label="公開サイト">
+        <button data-page="management">経営支援</button>
+        <button data-page="sales">営業支援</button>
+        <button data-page="ma">M&amp;A支援</button>
+        <button data-page="data">データについて</button>
+        <button data-page="pricing">料金</button>
+      </nav>
+      <div class="actions">
+        <a class="btn btn-outline" href="#login">ログイン</a>
+        <a class="btn btn-primary" href="#signup">無料で始める</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <article class="page active" id="page-top">
+      <div class="hero">
+        <div class="container">
+          <div class="eyebrow">Care Industry Business Intelligence</div>
+          <h1>公開情報を、介護事業の意思決定に使える形へ。</h1>
+          <p class="lead">介護業界の市場把握、経営分析、営業先の検討、M&amp;Aの初期調査を支援するデータ分析サービスです。</p>
+          <div class="hero-actions"><a class="btn btn-primary" href="#signup">無料で始める</a><button class="btn btn-outline" data-page="pricing">料金を見る</button></div>
+        </div>
+      </div>
+
+      <section>
+        <div class="container">
+          <div class="section-head"><h2>目的に合わせた分析</h2><p>利用目的ごとに必要な情報へ、迷わずアクセスできます。</p></div>
+          <div class="grid grid-3">
+            <div class="card"><h3>経営支援</h3><p>地域やサービス種別を軸に、自事業所の周辺環境と公開情報を確認します。</p><button class="link" data-page="management">詳しく見る →</button></div>
+            <div class="card"><h3>営業支援</h3><p>条件に合う法人・事業所を探し、介護業界への営業活動を支援します。</p><button class="link" data-page="sales">詳しく見る →</button></div>
+            <div class="card"><h3>M&amp;A支援</h3><p>候補探索と公開情報の整理により、初期調査を効率化します。</p><button class="link" data-page="ma">詳しく見る →</button></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="alt">
+        <div class="container">
+          <div class="section-head"><h2>介護業界の公開情報を横断</h2><p>数字の定義と公開範囲は、対外説明を確定してから掲載します。</p></div>
+          <div class="grid grid-3">
+            <div class="card metric"><strong class="fix">223,103</strong><span>施設・サービスレコード</span></div>
+            <div class="card metric"><strong class="fix">約19万</strong><span>事業所</span></div>
+            <div class="card metric"><strong class="fix">約6.8万</strong><span>法人</span></div>
+          </div>
+          <p class="notice warn" style="margin-top:18px">件数、粒度、基準日、更新方法は未承認です。FIX前は本番ページから削除するか、検索対象外にします。</p>
+        </div>
+      </section>
+
+      <section>
+        <div class="container">
+          <div class="section-head"><h2>主な機能</h2><p>公開情報の収集から検索・比較・整理までを一つの画面で。</p></div>
+          <div class="grid grid-3">
+            <div class="card"><h3>市場分析</h3><p>地域・サービス種別ごとの供給状況や事業所構成を確認します。</p></div>
+            <div class="card"><h3>法人・施設分析</h3><p>法人と事業所の関係、規模、展開地域、サービス構成を整理します。</p></div>
+            <div class="card"><h3>人材・品質分析</h3><p class="fix">人員配置や品質に関する公開値・派生指標を比較します。</p></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="alt faq">
+        <div class="container">
+          <div class="section-head"><h2>よくある質問</h2></div>
+          <details><summary>無料で試せますか？</summary><p><span class="fix">Freeプランで一部機能を利用できます。利用可能範囲は料金表と実装を照合して確定します。</span></p></details>
+          <details><summary>どのような用途に使えますか？</summary><p>介護事業者の経営分析、介護業界への営業活動、M&amp;A候補の初期調査などを想定しています。</p></details>
+          <details><summary>掲載データはどこから取得していますか？</summary><p><span class="fix">取得元、加工方法、更新頻度の対外説明は現在確認中です。</span></p></details>
+        </div>
+      </section>
+    </article>
+
+    <article class="page" id="page-management">
+      <div class="hero"><div class="container"><div class="eyebrow">For Operators</div><h1>介護事業の経営判断に、比較できる公開情報を。</h1><p class="lead">地域やサービス種別を軸に、周辺市場と事業所の状況を確認する経営支援機能です。</p><div class="hero-actions"><a class="btn btn-primary" href="#signup">無料で試す</a><button class="btn btn-outline" data-page="pricing">料金を見る</button></div></div></div>
+      <section><div class="container"><div class="section-head"><h2>こんな課題に</h2></div><div class="grid grid-3">
+        <div class="card"><h3>比較対象が見つからない</h3><p>同地域・同サービスの事業所を探すだけで時間がかかる。</p></div>
+        <div class="card"><h3>情報が分散している</h3><p>人員、品質、法人情報を複数の公開ページから確認している。</p></div>
+        <div class="card"><h3>数字の意味が分かりにくい</h3><p>施設単位とサービス単位が混在し、そのまま比較しにくい。</p></div>
+      </div></div></section>
+      <section class="alt"><div class="container"><div class="section-head"><h2>kaigo-biでできること</h2></div><div class="grid grid-3">
+        <div class="card"><h3>地域比較</h3><p>都道府県・市区町村・サービス種別で市場を確認します。</p></div>
+        <div class="card"><h3>事業所分析</h3><p class="fix">人員・稼働・品質など、利用できる公開情報を整理します。</p></div>
+        <div class="card"><h3>ベンチマーク</h3><p class="fix">全国平均を100とする指数など、比較可能な形で表示します。</p></div>
+      </div></div></section>
+      <section><div class="container"><p class="notice warn"><strong>要FIX:</strong> 「経営支援」と呼べる提供範囲、比較指標、欠損時の処理、更新頻度、マイ施設登録の扱いを確定してください。</p></div></section>
+    </article>
+
+    <article class="page" id="page-sales">
+      <div class="hero"><div class="container"><div class="eyebrow">For Sales Teams</div><h1>介護業界への営業を、条件検索から始める。</h1><p class="lead">地域・サービス種別・法人規模などから対象を絞り込み、営業先の検討を支援します。</p><div class="hero-actions"><button class="btn btn-primary" data-page="pricing">営業支援プランを見る</button></div></div></div>
+      <section><div class="container"><div class="section-head"><h2>営業活動を一つの流れに</h2></div><div class="grid grid-3 steps">
+        <div class="card"><h3>条件を指定</h3><p>対象地域、サービス、法人属性などを設定します。</p></div>
+        <div class="card"><h3>候補を確認</h3><p>条件に合う法人・事業所を一覧で比較します。</p></div>
+        <div class="card"><h3>リストを作成</h3><p class="fix">必要な項目をCSVへ出力し、営業活動へ利用します。</p></div>
+      </div></div></section>
+      <section class="alt"><div class="container"><div class="section-head"><h2>プラン上限案</h2></div><div class="grid grid-3">
+        <div class="card metric"><strong class="fix">3,000行/月</strong><span>Pro</span></div>
+        <div class="card metric"><strong class="fix">10,000行/月</strong><span>M&amp;A</span></div>
+        <div class="card"><h3>公開項目</h3><p class="fix">電話番号・法人情報を含む出力項目は要確認です。</p></div>
+      </div></div></section>
+      <section><div class="container"><p class="notice warn"><strong>要FIX:</strong> CSV提供項目、利用目的、再配布条件、月間上限、プラン価格を実装・規約と照合してください。</p></div></section>
+    </article>
+
+    <article class="page" id="page-ma">
+      <div class="hero"><div class="container"><div class="eyebrow">For M&amp;A</div><h1>介護M&amp;Aの候補探索と初期調査を効率化。</h1><p class="lead">法人・事業所の公開情報を横断し、候補の絞り込みと確認事項の整理を支援します。</p><div class="hero-actions"><button class="btn btn-primary" data-page="pricing">M&amp;Aプランを見る</button></div></div></div>
+      <section><div class="container"><div class="section-head"><h2>初期検討を支える機能</h2></div><div class="grid grid-3">
+        <div class="card"><h3>候補探索</h3><p>地域、法人規模、サービス構成などから候補を絞り込みます。</p></div>
+        <div class="card"><h3>法人情報整理</h3><p>法人配下の事業所や人員、公開情報をまとめて確認します。</p></div>
+        <div class="card"><h3>確認事項の提示</h3><p class="fix">行政処分、離職、稼働、財務などの要確認項目を整理します。</p></div>
+      </div></div></section>
+      <section class="alt"><div class="container"><div class="section-head"><h2>財務機能の公開表現</h2></div>
+        <p class="notice warn"><span class="fix">財務数値化は24施設・52レコードのパイロット段階</span>という記述、PDFリンクの整備範囲、AI抽出方法は対外公開前にFIXが必要です。</p>
+      </div></section>
+      <section><div class="container"><p class="notice"><strong>免責案:</strong> 本機能は公開情報に基づく初期調査を支援するもので、専門家による財務・法務・事業デューデリジェンスを代替しません。</p></div></section>
+    </article>
+
+    <article class="page" id="page-data">
+      <div class="hero"><div class="container"><div class="eyebrow">Data Policy Draft</div><h1>データについて</h1><p class="lead">このページの内容は全項目が承認前です。公開可能な説明へFIXしてから検索対象にします。</p></div></div>
+      <section><div class="container"><table>
+        <tr><th>主な取得元</th><td><span class="fix">介護サービス情報の公表制度等</span></td></tr>
+        <tr><th>収集方法</th><td><span class="fix">公開ページの収集・スクレイピング</span></td></tr>
+        <tr><th>データ粒度</th><td><span class="fix">施設×サービス、事業所、法人</span></td></tr>
+        <tr><th>件数</th><td><span class="fix">223,103レコード、約19万事業所、約6.8万法人</span></td></tr>
+        <tr><th>更新頻度</th><td><span class="fix">公開元の更新に合わせて取得。固定周期は未確立</span></td></tr>
+        <tr><th>欠損</th><td><span class="fix">0と区別し、算定に必要な値が不足する場合は算定不能</span></td></tr>
+        <tr><th>財務</th><td><span class="fix">PDFリンクとAI数値化を区別。数値化24施設・52レコード</span></td></tr>
+      </table></div></section>
+    </article>
+
+    <article class="page" id="page-methodology">
+      <div class="hero"><div class="container"><div class="eyebrow">Methodology Draft</div><h1>指標とデータの取り扱い</h1><p class="lead">実装、運用方針、対外説明が一致するまで公開しない前提のドラフトです。</p></div></div>
+      <section><div class="container"><div class="grid grid-3">
+        <div class="card"><h3>公表値</h3><p class="fix">公開元で公表された値をどの範囲まで原値として扱うか。</p></div>
+        <div class="card"><h3>正規化・派生値</h3><p class="fix">表記統一、単位変換、計算式、欠損処理をどう説明するか。</p></div>
+        <div class="card"><h3>AI抽出値</h3><p class="fix">対象文書、確度、検証方法、誤抽出時の扱いをどう説明するか。</p></div>
+      </div><p class="notice warn" style="margin-top:20px">PL/BSの決算期・スコープ結合、危険度・要確認シグナル、財務DDの点数化については実装レビュー指摘と整合させてFIXしてください。</p></div></section>
+    </article>
+
+    <article class="page" id="page-pricing">
+      <div class="hero"><div class="container"><div class="eyebrow">Pricing Draft</div><h1>料金プラン</h1><p class="lead">目的と利用範囲に合わせた4つのプラン案です。価格・機能・上限は公開前に最終確認します。</p></div></div>
+      <section><div class="container"><div class="grid grid-4">
+        <div class="card price-card"><h3>Free</h3><div class="price"><strong class="fix">0円</strong><span>/月</span></div><ul class="list"><li class="fix">全国サマリー</li><li class="fix">基本統計</li></ul></div>
+        <div class="card price-card"><h3>Standard</h3><div class="price"><strong class="fix">9,800円</strong><span>/月・税別</span></div><ul class="list"><li class="fix">BI全機能</li><li class="fix">経営支援</li></ul></div>
+        <div class="card price-card featured"><h3>Pro</h3><div class="price"><strong class="fix">29,800円</strong><span>/月・税別</span></div><ul class="list"><li class="fix">Standard全機能</li><li class="fix">CSV月3,000行</li></ul></div>
+        <div class="card price-card"><h3>M&amp;A</h3><div class="price"><strong class="fix">49,800円</strong><span>/月・税別</span></div><ul class="list"><li class="fix">M&amp;A・DD・PMI</li><li class="fix">CSV月10,000行</li></ul></div>
+      </div><p class="notice warn" style="margin-top:28px">Stripeテストモード中の表示、申込CTA、プランゲート、CSV上限、税込・税別表記を最終確認してください。</p></div></section>
+    </article>
+
+    <section class="cta">
+      <div class="container"><h2>介護業界のデータ活用を、もっと身近に。</h2><p>公開コピーをFIX後、このCTAから無料登録または料金確認へつなぎます。</p><a class="btn btn-primary" href="#signup">無料で始める</a></div>
+    </section>
+  </main>
+
+  <footer class="footer"><div class="footer-inner"><strong>kaigo-bi</strong><span>公開コピー確認用・検索登録禁止</span><span>© 2026 kaigo-bi</span></div></footer>
+
+  <aside class="page-switcher">
+    <strong>プレビューページ切替</strong>
+    <select id="pageSelect" aria-label="プレビューページ">
+      <option value="top">トップ</option>
+      <option value="management">経営支援</option>
+      <option value="sales">営業支援</option>
+      <option value="ma">M&amp;A支援</option>
+      <option value="data">データについて</option>
+      <option value="methodology">指標・取り扱い</option>
+      <option value="pricing">料金</option>
+    </select>
+    <div class="legend">下線・黄色背景・要FIXバッジは、公開前に内容の承認または削除が必要です。</div>
+  </aside>
+
+  <script>
+    const pages = [...document.querySelectorAll(".page")];
+    const select = document.getElementById("pageSelect");
+    function showPage(name) {
+      pages.forEach(page => page.classList.toggle("active", page.id === `page-${name}`));
+      select.value = name;
+      window.scrollTo({top:0,behavior:"instant"});
+      history.replaceState(null,"",`#${name}`);
+    }
+    document.querySelectorAll("[data-page]").forEach(el => el.addEventListener("click", () => showPage(el.dataset.page)));
+    select.addEventListener("change", event => showPage(event.target.value));
+    const initial = location.hash.slice(1);
+    if (pages.some(page => page.id === `page-${initial}`)) showPage(initial);
+  </script>
+</body>
+</html>

@@ -907,7 +907,7 @@ python scripts/export_salesforce.py
 | `scripts/upload_full_services_to_turso.py` | Tursoへのデータアップロード |
 | `scripts/e2e_test_comprehensive.py` | 包括的E2Eテスト（45項目） |
 | `scripts/turso_helpers.py` | Turso DB共通ヘルパー |
-| `scripts/geocode_facilities.py` | 国交省 位置参照情報で緯度経度を付与（91.2%） |
+| `scripts/geocode_facilities.py` | 国交省 位置参照情報で緯度経度を付与（91.9%） |
 | `scripts/geocode_fallback_gsi.py` | 残りを国土地理院APIで補完（→99.0%・約3時間） |
 | `scripts/build_search_index.py` | 施設名の全文検索索引 FTS5 trigram |
 | `scripts/build_corp_summary.py` | 法人単位の事前集計（68,563法人） |
@@ -926,7 +926,7 @@ python scripts/export_salesforce.py
 | `facility_metrics` | ベンチマークが 73 秒（TEXT列のCASTが索引を殺す） |
 | `build_indexes.py` の索引 | 採用天気図が 47 秒 |
 
-**Turso はリモート実行で1クエリ約2秒のオーバーヘッドがある。**
+**Turso はリモート実行で1往復あたり約0.066秒かかる。**
 クエリを細かく分割しすぎると却って遅くなる。
 
 #### 🔴 データ品質の実測値（誇張しないこと）
@@ -936,7 +936,7 @@ python scripts/export_salesforce.py
 | 住所 | 100%（書式は不揃い） |
 | 座標 | **99.0%**（220,865件） |
 | 事業年数 | 75.5%（異常値 -2979〜1804 を除外後） |
-| 賃金 | **2.3%**（5,092施設 / 11,016レコード） |
+| 賃金 | **2.4%**（5,352施設 / 11,350レコード。ETL基準では 11,016） |
 | 決算データ | **0.05%**（24法人。PDFリンクは45,118法人分あり解析待ち） |
 
 既知の異常値: 定員欄に日付（`20251215`）が97件、賃金に `25万円` `250,000` 表記。

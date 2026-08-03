@@ -3683,8 +3683,10 @@ pub async fn benchmark(db: &Database, jigyosho_number: &str) -> Result<Value, Ap
         let mut m = serde_json::Map::new();
 
         if use_metrics {
-            // Turso はリモート実行なので1クエリあたりの往復が支配的（実測 約2秒）。
-            // 指標ごとに分けると 24 クエリで 47 秒かかったため、
+            // Turso はリモート実行なので往復回数が効く（1往復 実測 約0.066秒）。
+            // 指標ごとに 24 クエリへ分けると 47 秒かかった。
+            // 主因は当時インデックスが効かず各クエリ自体が重かったことだが、
+            // 往復自体も 24 回で約 1.6 秒積み上がるため、
             // スコープ単位の1クエリにまとめる（facility_metrics は 11 列と軽い）。
             let cond = scope_cond.replace("\"サービス名\"", "service_name");
             let selects: Vec<String> = metric_cols
