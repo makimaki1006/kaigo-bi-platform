@@ -1,5 +1,7 @@
 # 法務対応の現状と未決事項（2026-08-07）
 
+`C:\Users\fuji1\kaigo-bi-platform\claudedocs\LEGAL_STATUS_20260807.md`
+
 法務3ページは**実装完了・デプロイ済み・ただし未公開**（noindex）。
 公開に必要な情報が4項目だけ残っている。
 
@@ -22,7 +24,7 @@
 
 ### なぜ未公開か
 
-`src/lib/legal.ts` の事業者情報が `（未設定）` のため。
+`C:\Users\fuji1\kaigo-bi-platform\kaigo-bi-frontend\src\lib\legal.ts` の事業者情報が `（未設定）` のため。
 「（未設定）」と書かれた契約書が検索結果に出る事故を防ぐガードを入れてある。
 
 `hasUnsetOperatorFields()` が判定しており、**埋めれば3ページ同時に自動で index 対象になる**。
@@ -32,7 +34,7 @@
 
 ## 2. 公開に必要な4項目
 
-`kaigo-bi-frontend/src/lib/legal.ts` の以下を埋めるだけ。
+`C:\Users\fuji1\kaigo-bi-platform\kaigo-bi-frontend\src\lib\legal.ts` の以下を埋めるだけ。
 
 | 項目 | 備考 |
 |---|---|
@@ -105,7 +107,7 @@ kaigo-bi は顧客が介護事業者・企業中心のB2Bなので、**実際に
 
 ### 切り替え方
 
-`src/lib/legal.ts` の1行だけ。
+`C:\Users\fuji1\kaigo-bi-platform\kaigo-bi-frontend\src\lib\legal.ts` の1行だけ。
 
 ```ts
 export const DISCLOSURE_MODE: "display" | "on-request" = "on-request";
@@ -122,7 +124,7 @@ export const DISCLOSURE_MODE: "display" | "on-request" = "on-request";
 ## 4. 「毎回弁護士に確認」はしていない（実務の分業）
 
 規約を出すたびに弁護士へ確認するのは非現実的、という指摘を受けて調べた結果。
-詳細は `LEGAL_PRACTICE_NOTES_20260804.md`。
+詳細は `C:\Users\fuji1\kaigo-bi-platform\claudedocs\LEGAL_PRACTICE_NOTES_20260804.md`。
 
 ```
 ① 公的一次情報で骨格を決める      ← 無料。今回の住所論点はこれで解決した
@@ -177,7 +179,7 @@ export const DISCLOSURE_MODE: "display" | "on-request" = "on-request";
   投資判断・M&A・与信・専門家助言の代替でない旨も明示
 
 ### 特商法表記
-- 販売価格は `pricing/page.tsx` のプラン定義と一致（税別表記も反映）
+- 販売価格は `C:\Users\fuji1\kaigo-bi-platform\kaigo-bi-frontend\src\app\pricing\page.tsx` のプラン定義と一致（税別表記も反映）
 - 解約導線は実装どおり「Stripe カスタマーポータル」
 - 返金は「お客様都合の中途解約は日割り返金なし／当社起因の場合は日割り返金」
 
@@ -190,20 +192,20 @@ export const DISCLOSURE_MODE: "display" | "on-request" = "on-request";
 2. **4項目** — 事業者名・運営責任者名・連絡先メール・管轄裁判所
 
 ### 私ができること
-- `legal.ts` を埋めて3ページを公開状態にする（noindex解除・sitemap掲載）
+- `C:\Users\fuji1\kaigo-bi-platform\kaigo-bi-frontend\src\lib\legal.ts` を埋めて3ページを公開状態にする（noindex解除・sitemap掲載）
 - `DISCLOSURE_MODE` の切り替え
 - 賠償上限条項の見直し案の作成
 
 ### 別途必要（ローンチ全体）
-`LAUNCH_CHECKLIST_20260804.md` 参照。独自ドメイン、Stripe本番キー、
+`C:\Users\fuji1\kaigo-bi-platform\claudedocs\LAUNCH_CHECKLIST_20260804.md` 参照。独自ドメイン、Stripe本番キー、
 Resendドメイン認証、Search Console。
 
 ---
 
 ## 関連ドキュメント
 
-| ファイル | 内容 |
+| フルパス | 内容 |
 |---|---|
-| `LEGAL_PRACTICE_NOTES_20260804.md` | 実務の分業、一次情報、ジェネレータ、費用相場 |
-| `LAUNCH_CHECKLIST_20260804.md` | ローンチ全体の残作業（法務以外も含む） |
-| `KAIGO_BI_STATUS_20260803.md` | プロダクト全体の現状サマリ |
+| `C:\Users\fuji1\kaigo-bi-platform\claudedocs\LEGAL_PRACTICE_NOTES_20260804.md` | 実務の分業、一次情報、ジェネレータ、費用相場 |
+| `C:\Users\fuji1\kaigo-bi-platform\claudedocs\LAUNCH_CHECKLIST_20260804.md` | ローンチ全体の残作業（法務以外も含む） |
+| `C:\Users\fuji1\kaigo-bi-platform\claudedocs\KAIGO_BI_STATUS_20260803.md` | プロダクト全体の現状サマリ |
