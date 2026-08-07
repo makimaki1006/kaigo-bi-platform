@@ -14,7 +14,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import PublicLayout from "@/components/public/PublicLayout";
 import { buildLegalMetadata } from "@/lib/seo";
-import { OPERATOR, LAST_UPDATED, SERVICE_NAME } from "@/lib/legal";
+import { OPERATOR, LAST_UPDATED, SERVICE_NAME, showsAddressAndPhone } from "@/lib/legal";
 
 export const metadata: Metadata = buildLegalMetadata({
   path: "/privacy",
@@ -248,8 +248,13 @@ export default function PrivacyPage() {
         <h2 className="mt-12 text-lg font-semibold text-gray-900">10. お問い合わせ窓口</h2>
         <div className="mt-3 rounded-lg border border-gray-200 bg-gray-50 px-5 py-4 text-sm text-gray-700">
           <p>{OPERATOR.name}</p>
-          <p className="mt-1">{OPERATOR.address}</p>
+          {showsAddressAndPhone() && <p className="mt-1">{OPERATOR.address}</p>}
           <p className="mt-1">個人情報に関するお問い合わせ: {OPERATOR.privacyContact}</p>
+          {!showsAddressAndPhone() && (
+            <p className="mt-2 text-xs text-gray-500">
+              所在地は、ご請求をいただいた場合に遅滞なく開示します。
+            </p>
+          )}
         </div>
 
         <div className="mt-14 rounded-lg border border-gray-200 bg-gray-50 px-5 py-4">

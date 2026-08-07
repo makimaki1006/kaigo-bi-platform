@@ -14,7 +14,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import PublicLayout from "@/components/public/PublicLayout";
 import { buildLegalMetadata } from "@/lib/seo";
-import { OPERATOR, LAST_UPDATED } from "@/lib/legal";
+import { OPERATOR, LAST_UPDATED, showsAddressAndPhone } from "@/lib/legal";
 
 export const metadata: Metadata = buildLegalMetadata({
   path: "/legal",
@@ -23,24 +23,53 @@ export const metadata: Metadata = buildLegalMetadata({
     "kaigo-bi の販売事業者、料金、支払方法、提供時期、解約・返金の条件を特定商取引法に基づき表示します。",
 });
 
+/**
+ * 住所・電話番号の行。
+ *
+ * 消費者庁「通信販売広告Q&A」Q15・Q17 により、請求があれば遅滞なく提供する旨を
+ * 表示し実際にその体制を講じていれば、住所・電話番号の表示は省略できる。
+ * src/lib/legal.ts の DISCLOSURE_MODE で切り替える。
+ */
+const CONTACT_ROWS: { label: string; value: React.ReactNode }[] = showsAddressAndPhone()
+  ? [
+      { label: "所在地", value: OPERATOR.address },
+      { label: "電話番号", value: OPERATOR.phone },
+    ]
+  : [
+      {
+        label: "所在地・電話番号",
+        value: (
+          <>
+            <strong className="text-gray-900">
+              ご請求をいただいた場合、遅滞なく電子メールにて開示します。
+            </strong>
+            <span className="mt-1 block">
+              下記のメールアドレス宛に、その旨をご連絡ください。
+              お申し込みのご判断に先立ち、十分な時間的余裕をもってご提供します。
+            </span>
+          </>
+        ),
+      },
+    ];
+
 /** 表示項目 */
 const ROWS: { label: string; value: React.ReactNode }[] = [
   { label: "販売事業者", value: OPERATOR.name },
   { label: "運営責任者", value: OPERATOR.representative },
-  { label: "所在地", value: OPERATOR.address },
+  ...CONTACT_ROWS,
   {
-    label: "電話番号",
+    label: "メールアドレス",
     value: (
       <>
-        {OPERATOR.phone}
-        <span className="mt-1 block text-xs text-gray-500">
-          お問い合わせは下記メールアドレスにて承ります。
-          電話番号は請求があった場合に遅滞なく開示します。
-        </span>
+        {OPERATOR.contactEmail}
+        {!showsAddressAndPhone() && (
+          <span className="mt-1 block text-xs text-gray-500">
+            所在地・電話番号のご請求も、こちらで承ります。
+          </span>
+        )}
       </>
     ),
   },
-  { label: "メールアドレス", value: OPERATOR.contactEmail },
   { label: "ホームページ", value: "https://kaigo-bi.onrender.com" },
   {
     label: "販売価格",
