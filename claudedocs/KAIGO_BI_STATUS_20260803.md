@@ -234,8 +234,9 @@ curl "https://api.render.com/deploy/srv-d70c6t1r0fns73coo3gg?key=mSX7Y-1StB8"
 ## 9. 残課題
 
 ### ローンチ必須（人手が必要）
-- **特商法に基づく運営者情報**・利用規約・プライバシーポリシーの実ページ
-  （有料課金開始前に法的に必須）
+- ~~特商法・利用規約・プライバシーポリシーの実ページ~~
+  → 2026-08-07 に3ページとも実装・デプロイ済み。
+  事業者情報4項目が未設定のため noindex のまま。詳細は `LEGAL_STATUS_20260807.md`
 - 独自ドメイン + Search Console、og:image
 - Stripe本番キー、Resendドメイン認証
 
@@ -259,4 +260,7 @@ curl "https://api.render.com/deploy/srv-d70c6t1r0fns73coo3gg?key=mSX7Y-1StB8"
 | `FIXES_20260802.md` | 絶対基準スコア + データ層バグ5件 |
 | `GEOCODING_20260802.md` | ジオコーディングと周辺施設マップの設計 |
 | `PERF_AND_VERIFY_20260803.md` | 実画面検証とパフォーマンス改善の詳細 |
+| `LEGAL_STATUS_20260807.md` | **法務対応の現状と未決事項**（再開時はここから） |
+| `LEGAL_PRACTICE_NOTES_20260804.md` | 法務文書の実務的な作り方（一次情報・ジェネレータ・費用） |
+| `LAUNCH_CHECKLIST_20260804.md` | ローンチ全体の残作業 |
 | `DOC_AUDIT_20260803.md` | **本ドキュメントの記載を逆証明した記録**（5件を訂正） |
