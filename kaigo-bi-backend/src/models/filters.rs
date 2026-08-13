@@ -46,6 +46,12 @@ pub struct SearchParams {
     pub page: Option<usize>,
     /// 1ページあたりの件数（デフォルト: 50）
     pub per_page: Option<usize>,
+    /// 決算書の開示状況で絞る
+    ///   none  = 決算書を1つも出していない
+    ///   stale = 出しているが掲載が2年以上前
+    ///   fresh = 直近1年以内に掲載
+    ///   full  = PL/BS/CF の3点セットが揃っている
+    pub financial_status: Option<String>,
 }
 
 impl SearchParams {

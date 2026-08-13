@@ -105,6 +105,11 @@ kaigo-bi-backend/target/
 kaigo-bi-etl/__pycache__/
 *.parquet
 data/financial_pilot/**/*.pdf
+# 決算PDFの調査用サンプルと解析結果（再取得・再生成できる）
+# 取得: scripts/fin_sample_download.py / 解析: scripts/fin_analyze_pdfs.py
+data/financial_survey/
+# Playwright MCP の作業ディレクトリ
+.playwright-mcp/
 kaigo-bi-frontend/tsconfig.tsbuildinfo
 
 # 位置参照情報(国交省)のダウンロード物と突合結果（再生成可能）

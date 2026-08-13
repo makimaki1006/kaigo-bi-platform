@@ -49,11 +49,25 @@ function CorpDetailContent() {
       list.push(rec);
       groups.set(rec.jigyosho_number, list);
     }
-    return Array.from(groups.entries()).map(([jigyosho, recs]) => ({
-      jigyosho,
-      name: nameMap.get(jigyosho) ?? jigyosho,
-      records: recs,
-    }));
+    // 金額が1つも取れていない施設は除く（決算PDFの半分以上はスキャン画像で、
+    // レコードはあっても中身が全部null。並べても「-」だけのカードになる）
+    const hasAmount = (recs: FinancialRecord[]) =>
+      recs.some(
+        (r) =>
+          r.revenue != null ||
+          r.operating_income != null ||
+          r.ordinary_income != null ||
+          r.net_income != null ||
+          r.total_assets != null ||
+          r.net_assets != null
+      );
+    return Array.from(groups.entries())
+      .filter(([, recs]) => hasAmount(recs))
+      .map(([jigyosho, recs]) => ({
+        jigyosho,
+        name: nameMap.get(jigyosho) ?? jigyosho,
+        records: recs,
+      }));
   }, [report]);
 
   if (!corpNumber) {

@@ -9,10 +9,11 @@
 import { Card } from "@tremor/react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { FacilityRow, FacilityRowExtended } from "@/lib/types";
+import type { FacilityRow, FacilityRowExtended, FinancialRecord } from "@/lib/types";
 import { KASAN_LABELS } from "@/lib/types";
 import { formatNumber, formatServiceName, formatCorpType } from "@/lib/formatters";
 import LoadingSpinner from "@/components/common/LoadingSpinner";
+import FinancialDisclosureCard from "@/components/data-display/FinancialDisclosureCard";
 
 interface FacilityDetailPanelProps {
   /** 施設詳細データ */
@@ -21,6 +22,8 @@ interface FacilityDetailPanelProps {
   loading?: boolean;
   /** 閉じるコールバック */
   onClose: () => void;
+  /** 決算PDFから抽出できた財務レコード（未抽出なら空） */
+  financialRecords?: FinancialRecord[];
 }
 
 /** 情報行コンポーネント */
@@ -78,6 +81,7 @@ export default function FacilityDetailPanel({
   facility,
   loading = false,
   onClose,
+  financialRecords = [],
 }: FacilityDetailPanelProps) {
   const pathname = usePathname();
   // 施設詳細ページ自身で使われている場合はページリンクを出さない
@@ -104,8 +108,6 @@ export default function FacilityDetailPanel({
   // 要介護度データの有無判定（care_level_1-5が全てnullの場合は非表示）
   const hasAnyCareLevel = ext?.care_level_1 != null || ext?.care_level_2 != null || ext?.care_level_3 != null || ext?.care_level_4 != null || ext?.care_level_5 != null;
   const hasCareLevelData = hasAnyCareLevel || ext?.total_users != null;
-  // 財務諸表データの有無判定
-  const hasFinancialData = ext?.financial_statement_url_pl != null || ext?.financial_statement_url_cf != null || ext?.financial_statement_url_bs != null;
 
   // 要介護度別小バーチャートデータ
   const careLevelData = hasCareLevelData && ext ? [
@@ -255,47 +257,15 @@ export default function FacilityDetailPanel({
             <InfoRow label="法人番号" value={facility.corp_number} />
           </dl>
 
-          {/* 財務諸表ダウンロードリンク */}
-          {hasFinancialData && (
-            <div className="mt-3 pt-3 border-t border-gray-100">
-              <p className="text-xs font-medium text-gray-500 mb-2">財務諸表</p>
-              <div className="flex flex-wrap gap-2">
-                {ext?.financial_statement_url_pl && (
-                  <a
-                    href={ext.financial_statement_url_pl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-lg border border-indigo-200 hover:bg-indigo-100 transition-colors"
-                  >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
-                    事業活動計算書
-                  </a>
-                )}
-                {ext?.financial_statement_url_cf && (
-                  <a
-                    href={ext.financial_statement_url_cf}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-lg border border-indigo-200 hover:bg-indigo-100 transition-colors"
-                  >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
-                    資金収支計算書
-                  </a>
-                )}
-                {ext?.financial_statement_url_bs && (
-                  <a
-                    href={ext.financial_statement_url_bs}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-indigo-50 text-indigo-700 text-xs font-medium rounded-lg border border-indigo-200 hover:bg-indigo-100 transition-colors"
-                  >
-                    <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" x2="12" y1="15" y2="3" /></svg>
-                    貸借対照表
-                  </a>
-                )}
-              </div>
-            </div>
-          )}
+          {/* 決算書: 掲載状況 + 掲載日 + 原本リンク + 未抽出理由 */}
+          <FinancialDisclosureCard
+            disclosure={ext?.financial_disclosure}
+            urlPl={ext?.financial_statement_url_pl}
+            urlCf={ext?.financial_statement_url_cf}
+            urlBs={ext?.financial_statement_url_bs}
+            records={financialRecords}
+            accountingType={ext?.accounting_type}
+          />
         </section>
       </div>
 

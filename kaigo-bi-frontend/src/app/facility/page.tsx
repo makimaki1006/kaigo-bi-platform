@@ -47,6 +47,21 @@ function FacilityDetailContent() {
   const financials = data?.financials ?? [];
   const crossMetrics = data?.cross_metrics ?? null;
   const financialStatus = data?.financial_status ?? null;
+  // 解析済みでも金額が1つも取れていないレコードが大半（スキャン画像・自由書式）。
+  // 「レコードがある」を「数値がある」と扱うと、全項目が「-」のカードが出てしまう。
+  // 判定対象は財務サマリーが実際に描画する PL / BS に限る。
+  // CFだけ値があるケースを「あり」にすると、カードは何も描かないのに
+  // 「取れなかった理由」も出ないという無表示状態になる（実測: 3571501950）
+  const hasAmounts = financials.some(
+    (r) =>
+      (r.doc_type === "PL" || r.doc_type === "BS") &&
+      (r.revenue != null ||
+        r.operating_income != null ||
+        r.ordinary_income != null ||
+        r.net_income != null ||
+        r.total_assets != null ||
+        r.net_assets != null)
+  );
   const hasViolation = facility?.sanction_detail != null || facility?.guidance_detail != null;
   const hasStaffing =
     facility?.staffing != null &&
@@ -110,17 +125,32 @@ function FacilityDetailContent() {
         </div>
       )}
 
-      {/* 財務データ: 状態別に表示（レビュー④対応 — 未表示の理由を区別する） */}
-      {financials.length > 0 ? (
+      {/* 財務データ: 状態別に表示（未表示の理由を区別する）
+          ① 金額が取れた → サマリー
+          ② 解析はしたが金額が取れない（スキャン画像・自由書式）→ 理由を出す
+          ③ PDFはあるが未解析 / ④ そもそも未公表 */}
+      {hasAmounts ? (
         <>
           <FinancialSummaryCard records={financials} />
           {crossMetrics?.has_financials && <CrossMetricsCard metrics={crossMetrics} />}
         </>
+      ) : financials.length > 0 ? (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl text-sm text-amber-800">
+          決算書は公表されていますが、機械では金額を読み取れませんでした。
+          <ul className="mt-1 space-y-0.5">
+            {Array.from(new Set(financials.map((r) => r.notes).filter(Boolean))).map((nt) => (
+              <li key={nt as string} className="text-xs text-amber-700">・{nt}</li>
+            ))}
+          </ul>
+          <span className="block text-xs text-amber-600 mt-1">
+            下部「決算書」から原本PDFを開けます。
+          </span>
+        </div>
       ) : financialStatus === "pdf_available" ? (
         <div className="p-4 bg-indigo-50 border border-indigo-200 rounded-xl text-sm text-indigo-800">
-          この施設は決算諸表のPDFを公表していますが、財務数値のAI抽出は未実施です（順次拡大中）。
+          この施設は決算諸表のPDFを公表していますが、財務数値の抽出は未実施です（順次拡大中）。
           <span className="block text-xs text-indigo-500 mt-1">
-            PDFリンクは下部「財務諸表」からご確認いただけます。
+            PDFリンクは下部「決算書」からご確認いただけます。
           </span>
         </div>
       ) : financialStatus === "not_published" ? (
@@ -134,6 +164,7 @@ function FacilityDetailContent() {
         facility={facility}
         loading={isLoading}
         onClose={() => router.back()}
+        financialRecords={financials}
       />
 
       {/* 職種別人員体制 */}

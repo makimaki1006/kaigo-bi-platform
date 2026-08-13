@@ -674,6 +674,169 @@ export interface FinancialRecord {
   total_liabilities: number | null;
   confidence: string | null;
   notes: string | null;
+  /** 以下は来歴（決算PDFが自由書式のため、値だけでは誤読される） */
+  fiscal_year?: number | null;
+  /** 円 / 千円 / 百万円 */
+  unit?: string | null;
+  /** pdf=PDFに明記 / inferred=桁から推定 / assumed=円と仮定 */
+  unit_source?: string | null;
+  /** 法人単位 / 拠点区分 / サービス区分 / null=記載なし */
+  scope?: string | null;
+  form?: string | null;
+  acct_standard?: string | null;
+  /** rule_v1=座標ベースの規則抽出 / ai_vision=AI視覚抽出 */
+  extraction_method?: string | null;
+  /** false ならスキャン画像で機械抽出不可 */
+  text_layer?: boolean | null;
+  /** 資産 = 負債 + 純資産 が成立したか */
+  identity_ok?: boolean | null;
+  uploaded_at?: string | null;
+}
+
+// ===================================================
+// 決算書の開示状況（全施設で機械的に確定する層）
+// ===================================================
+
+/** 施設単位の決算書開示状況 */
+export interface FinancialDisclosure {
+  has_pl: boolean;
+  has_cf: boolean;
+  has_bs: boolean;
+  doc_count: number;
+  is_full_set: boolean;
+  file_format: string | null;
+  uploaded_at_pl: string | null;
+  uploaded_at_cf: string | null;
+  uploaded_at_bs: string | null;
+  latest_upload: string | null;
+  days_since_upload: number | null;
+}
+
+/** 全国の開示状況KPI */
+export interface FinancialDisclosureKpi {
+  facilities: number;
+  jigyosho: number;
+  corporations: number;
+  with_any: number;
+  with_any_rate: number;
+  with_pl: number;
+  with_pl_rate: number;
+  with_bs: number;
+  with_bs_rate: number;
+  with_cf: number;
+  with_cf_rate: number;
+  full_set: number;
+  full_set_rate: number;
+  csv_count: number;
+  timestamp_available: number;
+  oldest_upload: string | null;
+  latest_upload: string | null;
+  fresh_within_1y: number;
+  fresh_within_1y_rate: number;
+}
+
+export interface FinancialDisclosureByPrefecture {
+  prefecture: string;
+  facilities: number;
+  with_pl: number;
+  disclosure_rate: number;
+  full_set: number;
+  full_set_rate: number;
+  fresh_1y: number;
+  fresh_rate: number;
+}
+
+export interface FinancialDisclosureByCorpType {
+  corp_type: string;
+  facilities: number;
+  with_pl: number;
+  with_bs: number;
+  with_cf: number;
+  disclosure_rate: number;
+  full_set: number;
+  full_set_rate: number;
+  csv_count: number;
+}
+
+export interface FinancialDisclosureByService {
+  service: string;
+  facilities: number;
+  with_pl: number;
+  disclosure_rate: number;
+  full_set_rate: number;
+}
+
+export interface FinancialDisclosureFreshness {
+  month: string;
+  count: number;
+}
+
+/** 未開示・更新停滞のセグメント（営業・DDの対象抽出用） */
+export interface FinancialDisclosureGap {
+  no_disclosure: number;
+  no_disclosure_corporations: number;
+  no_disclosure_rate: number;
+  stale_over_2y: number;
+  stale_over_1y: number;
+  note: string;
+  by_prefecture: {
+    prefecture: string;
+    facilities: number;
+    no_disclosure: number;
+    no_disclosure_rate: number;
+    stale_over_2y: number;
+  }[];
+}
+
+export interface FinancialDisclosureByAcctType {
+  acct_type: string;
+  facilities: number;
+  with_pl: number;
+  disclosure_rate: number;
+}
+
+/** 金額抽出がどこまでできるかの実測値（financialsテーブルの実データから算出） */
+export interface FinancialExtractionStatus {
+  analyzed_files: number;
+  analyzed_facilities: number;
+  text_layer_rate: number;
+  pl_files: number;
+  pl_revenue_rate: number;
+  pl_revenue_and_personnel_rate: number;
+  bs_files: number;
+  bs_assets_and_equity_rate: number;
+  /** 資産 = 負債 + 純資産 が成立した割合（抽出値の信頼性） */
+  bs_identity_match_rate: number;
+  /** 以下3つはテキスト層のあるファイルを分母とする */
+  period_detect_rate: number;
+  scope_stated_rate: number;
+  unit_stated_rate: number;
+  note: string;
+  surveyed_at: string | null;
+}
+
+/** 抽出できた金額の集計。全国平均ではないので n が必須 */
+export interface FinancialMetricStat {
+  n: number;
+  median: number | null;
+  quartiles: { p25: number; p50: number; p75: number } | null;
+  published: boolean;
+}
+
+export interface FinancialMetricsSummary {
+  source: string;
+  facilities_with_any_amount: number;
+  personnel_ratio: FinancialMetricStat;
+  equity_ratio: FinancialMetricStat;
+  min_n: number;
+}
+
+export interface FinancialMetricsByCorpType {
+  corp_type: string;
+  personnel_n: number;
+  equity_n: number;
+  personnel_median?: number;
+  equity_median?: number;
 }
 
 /** DD財務情報（実API） */
@@ -721,7 +884,13 @@ export interface CrossMetrics {
 }
 
 /** 施設・法人の財務データ状態 */
-export type FinancialStatus = "extracted" | "pdf_available" | "not_published";
+/** extracted=金額が取れた / parsed_no_amount=解析したが金額が読めない
+ *  pdf_available=PDFはあるが未解析 / not_published=決算書の掲載なし */
+export type FinancialStatus =
+  | "extracted"
+  | "parsed_no_amount"
+  | "pdf_available"
+  | "not_published";
 
 /** 行政処分・指導レコード（法人DD、実API） */
 export interface DdViolation {
@@ -914,6 +1083,8 @@ export interface FacilityRowExtended extends FacilityRow {
   financial_statement_url_pl: string | null;
   financial_statement_url_cf: string | null;
   financial_statement_url_bs: string | null;
+  /** 決算書の開示状況（URLから機械的に確定する層） */
+  financial_disclosure?: FinancialDisclosure | null;
   // 行政処分・指導
   admin_penalty_date: string | null;
   admin_penalty_content: string | null;

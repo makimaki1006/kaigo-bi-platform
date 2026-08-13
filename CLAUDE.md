@@ -913,6 +913,10 @@ python scripts/export_salesforce.py
 | `scripts/build_corp_summary.py` | 法人単位の事前集計（68,563法人） |
 | `scripts/build_facility_metrics.py` | ベンチマーク8指標をREAL化 |
 | `scripts/build_indexes.py` | 集計クエリ用のカバリング索引（冪等） |
+| `scripts/aggregate_financial_disclosure.py` | 決算書の開示状況を集計（kpi_cache 7キー・約5分） |
+| `scripts/fin_extract_batch.py` | 決算PDFから金額を抽出→financials（法人単位で重複排除） |
+| `scripts/aggregate_financial_metrics.py` | 抽出できた金額の中央値集計（n<30は非公開） |
+| `scripts/fin_sample_download.py` / `fin_analyze_pdfs.py` / `fin_report.py` | 決算PDFの実測調査用 |
 
 #### 🔴 性能の前提（2026-08-03 に整備）
 
@@ -937,10 +941,27 @@ python scripts/export_salesforce.py
 | 座標 | **99.0%**（220,865件） |
 | 事業年数 | 75.5%（異常値 -2979〜1804 を除外後） |
 | 賃金 | **2.4%**（5,352施設 / 11,350レコード。ETL基準では 11,016） |
-| 決算データ | **0.05%**（24法人。PDFリンクは45,118法人分あり解析待ち） |
+| 決算書の**開示有無** | **100%**（機械的に確定。67.1%が掲載あり・3点セットは30.7%） |
+| 決算書の**掲載日** | **100%**（URL末尾の `?<Unix秒>`。2024-10〜2026-07） |
+| 決算書の**金額** | **低い**（11,694ファイル解析時点で PL収益 20.7% / BS総資産+純資産 7.1%） |
+
+**決算PDFは自由書式のアップロードで、42.9%しかテキスト層がない**（残りはスキャン画像）。
+様式も統一されておらず（試算表・予算対比表・行政コスト計算書が混在）、
+手入力の誤字（「売上貴」「計上損失」）も実在する。
+**金額を網羅的な指標にはできない。** 詳細と根拠:
+`C:\Users\fuji1\kaigo-bi-platform\claudedocs\FINANCIAL_PDF_SURVEY_20260812.md`
 
 既知の異常値: 定員欄に日付（`20251215`）が97件、賃金に `25万円` `250,000` 表記。
 いずれも取り込み側で正規化済み。**新しい集計を書くときは同じ足切りを入れること。**
+
+#### 🔴 バックエンドの落とし穴
+
+**axum は 0.7 系。パスパラメータは `:id` 記法で書くこと。**
+0.8 記法の `{id}` を書くとリテラル文字列として登録され、
+実IDのリクエストが**常に404**になる（コンパイルは通るので気づきにくい）。
+
+2026-08-12 に `routes/users.rs` の3ルートがこれで壊れており、
+管理画面のユーザー削除・更新・個別取得が全て404になっていた。
 
 #### 環境変数（必須）
 
@@ -973,6 +994,8 @@ python scripts/build_corp_summary.py --refresh
 python scripts/build_facility_metrics.py --refresh
 python scripts/build_indexes.py --build                 # 冪等
 python scripts/aggregate_to_cache.py                    # kpi_cache（約27分）
+python scripts/aggregate_financial_disclosure.py        # 決算書の開示状況（約5分）
+python scripts/aggregate_financial_metrics.py           # 抽出済み金額の集計
 
 # 4. ビルド→デプロイ
 gh workflow run "Build and Push Docker Image"

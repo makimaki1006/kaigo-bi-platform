@@ -7,6 +7,7 @@
 // ===================================================
 
 import { Suspense, useState, useCallback, useEffect, useRef } from "react";
+import { useSearchParams } from "next/navigation";
 // TextInput は Tremor の HeadlessUI v2 互換問題があるため HTML input を使用
 import { useApi } from "@/hooks/useApi";
 import { useFilters } from "@/hooks/useFilters";
@@ -45,8 +46,23 @@ const COLUMNS: ColumnDef<FacilityRow>[] = [
   },
 ];
 
+/** 決算書の開示状況フィルタ。決算書の開示状況ページからリンクで飛んでくる */
+const FINANCIAL_STATUS_OPTIONS = [
+  { value: "", label: "決算書: 指定なし" },
+  { value: "none", label: "決算書を出していない" },
+  { value: "stale", label: "1年以上更新なし" },
+  { value: "fresh", label: "1年以内に更新" },
+  { value: "full", label: "3点セットあり" },
+];
+
 function FacilitiesContent() {
   const { filters, setFilters, toApiParams } = useFilters();
+  const urlParams = useSearchParams();
+
+  // 決算書フィルタ（?financial_status=none で初期選択される）
+  const [financialStatus, setFinancialStatus] = useState(
+    () => urlParams.get("financial_status") ?? ""
+  );
 
   // ローカル検索キーワード（デバウンス用）
   const [searchInput, setSearchInput] = useState(filters.keyword);
@@ -87,6 +103,7 @@ function FacilitiesContent() {
       per_page: DEFAULT_PAGE_SIZE,
       sort_by: sort.key,
       sort_order: sort.direction,
+      ...(financialStatus ? { financial_status: financialStatus } : {}),
     }
   );
 
@@ -134,16 +151,36 @@ function FacilitiesContent() {
       {/* APIエラーバナー */}
       <ApiErrorBanner error={searchError || detailError} />
 
-      {/* 検索バー */}
-      <div className="max-w-lg">
-        <input
-          type="text"
-          className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
-          placeholder="事業所名、法人名、住所で検索..."
-          value={searchInput}
-          onChange={(e) => setSearchInput(e.target.value)}
-        />
+      {/* 検索バー + 決算書フィルタ */}
+      <div className="flex flex-wrap gap-2 items-center">
+        <div className="max-w-lg flex-1 min-w-[240px]">
+          <input
+            type="text"
+            className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-500"
+            placeholder="事業所名、法人名、住所で検索..."
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+          />
+        </div>
+        <select
+          className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
+          value={financialStatus}
+          onChange={(e) => {
+            setFinancialStatus(e.target.value);
+            setPage(1);
+          }}
+          aria-label="決算書の開示状況で絞り込む"
+        >
+          {FINANCIAL_STATUS_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
       </div>
+      {financialStatus && (
+        <p className="text-xs text-gray-500 -mt-3">
+          決算書の開示状況で絞り込み中。全表走査になるため結果表示に十数秒かかることがあります。
+        </p>
+      )}
 
       {/* フィルタパネル（コンパクト） */}
       <FilterPanel

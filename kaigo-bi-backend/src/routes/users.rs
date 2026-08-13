@@ -56,9 +56,11 @@ pub fn router() -> Router<SharedState> {
         .route("/api/users", get(list_users))
         .route("/api/users", post(create_user))
         .route("/api/users/audit-log", get(audit_log))
-        .route("/api/users/{id}", get(get_user))
-        .route("/api/users/{id}", put(update_user))
-        .route("/api/users/{id}", delete(delete_user))
+        // axum 0.7 のパスパラメータは ":id"。0.8 記法の "{id}" を書くと
+        // リテラル文字列として登録され、実IDのリクエストが常に404になる
+        .route("/api/users/:id", get(get_user))
+        .route("/api/users/:id", put(update_user))
+        .route("/api/users/:id", delete(delete_user))
 }
 
 /// adminロールチェックマクロ的ヘルパー

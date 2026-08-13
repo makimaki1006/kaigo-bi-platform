@@ -13,6 +13,7 @@ pub mod due_diligence;
 pub mod export;
 pub mod external;
 pub mod facilities;
+pub mod financial;
 pub mod growth;
 pub mod ma_screening;
 pub mod market;
@@ -80,6 +81,7 @@ pub fn create_router(state: SharedState) -> Router {
         .merge(growth::router())
         .merge(facilities::router())
         .merge(benchmark::router())
+        .merge(financial::router())
         .with_state(state.clone())
         .layer(middleware::from_fn_with_state(state.clone(), |st, req, next| {
             require_plan("standard", st, req, next)

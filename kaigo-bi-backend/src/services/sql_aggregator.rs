@@ -1987,6 +1987,11 @@ pub async fn search_facilities(db: &Database, params: &SearchParams) -> Result<V
         }
     }
 
+    // 決算書の開示状況で絞る（営業リスト・DD対象の抽出用）
+    if let Some(cond) = financial_status_condition(params.financial_status.as_deref()) {
+        w.conditions.push(cond);
+    }
+
     let where_clause = w.to_where_clause();
     let page = params.page.unwrap_or(1).max(1);
     let per_page = params.per_page.unwrap_or(50).min(500).max(1);
@@ -2360,11 +2365,25 @@ pub async fn facility_detail(db: &Database, id: &str) -> Result<Value, AppError>
     let has_pdf_link = row_str_opt(row, 27).is_some()
         || row_str_opt(row, 28).is_some()
         || row_str_opt(row, 29).is_some();
-    let has_extracted = !financials.is_empty();
-    let financial_status = if has_extracted {
-        "extracted"        // 決算PDFをAI抽出済み(財務サマリー・クロス指標あり)
+    // 「解析済み」と「金額が取れた」は別。決算PDFの半分以上はスキャン画像で、
+    // レコードはあっても金額が全部nullになる。それを extracted 扱いすると
+    // 画面が「-」だけのサマリーを描いてしまう
+    // 判定は財務サマリーが実際に描く PL / BS に限る。
+    // CFだけ値があるケースを extracted にすると、画面はカードも理由も出さず無表示になる
+    let has_amounts = financials.iter().any(|f| {
+        let dt = f.get("doc_type").and_then(|v| v.as_str()).unwrap_or("");
+        (dt == "PL" || dt == "BS")
+            && ["revenue", "operating_income", "ordinary_income",
+                "net_income", "total_assets", "net_assets"]
+                .iter()
+                .any(|k| f.get(*k).map(|v| !v.is_null()).unwrap_or(false))
+    });
+    let financial_status = if has_amounts {
+        "extracted"        // 金額を抽出できた(財務サマリー・クロス指標あり)
+    } else if !financials.is_empty() {
+        "parsed_no_amount" // 解析したが金額が読めない(スキャン画像・自由書式)
     } else if has_pdf_link {
-        "pdf_available"    // PDFリンクはあるがAI未抽出
+        "pdf_available"    // PDFリンクはあるが未解析
     } else {
         "not_published"    // 公表システム上に財務諸表なし(uneiスクレイプ済みが前提)
     };
@@ -2404,6 +2423,8 @@ pub async fn facility_detail(db: &Database, id: &str) -> Result<Value, AppError>
             "financial_statement_url_pl": to_kaigokensaku_url(row_str_opt(row, 27)),
             "financial_statement_url_cf": to_kaigokensaku_url(row_str_opt(row, 28)),
             "financial_statement_url_bs": to_kaigokensaku_url(row_str_opt(row, 29)),
+            "financial_disclosure": build_disclosure(
+                &row_str_opt(row, 27), &row_str_opt(row, 28), &row_str_opt(row, 29)),
             // 要介護度・利用者（FacilityRowExtended準拠キー）
             "care_level_1": row_f64_opt(row, 30),
             "care_level_2": row_f64_opt(row, 31),
@@ -2469,11 +2490,15 @@ pub async fn facility_detail(db: &Database, id: &str) -> Result<Value, AppError>
 /// key_col は "jigyosho_number" または "corp_number"
 /// テーブル未作成・エラー時は空配列を返す（財務は付加情報のため本体を止めない）
 async fn fetch_financials(conn: &libsql::Connection, key_col: &str, key: &str) -> Vec<Value> {
+    // 来歴（単位・集計単位・様式・抽出方法・恒等式チェック）まで返す。
+    // 決算PDFは自由書式で、値だけ見せると誤読につながるため画面側で必ず添える。
     let sql = format!(
         "SELECT jigyosho_number, doc_type, fiscal_period, revenue, personnel_cost,
                 operating_income, ordinary_income, net_income,
                 prior_revenue, prior_operating_income,
-                total_assets, net_assets, total_liabilities, confidence, notes
+                total_assets, net_assets, total_liabilities, confidence, notes,
+                fiscal_year, unit, unit_source, scope, form, acct_standard,
+                extraction_method, text_layer, identity_ok, uploaded_at
          FROM financials WHERE {} = ?1 ORDER BY jigyosho_number, doc_type",
         key_col
     );
@@ -2499,6 +2524,16 @@ async fn fetch_financials(conn: &libsql::Connection, key_col: &str, key: &str) -
                 "total_liabilities": row_f64_opt(row, 12),
                 "confidence": row_str_opt(row, 13),
                 "notes": row_str_opt(row, 14),
+                "fiscal_year": row_f64_opt(row, 15),
+                "unit": row_str_opt(row, 16),
+                "unit_source": row_str_opt(row, 17),
+                "scope": row_str_opt(row, 18),
+                "form": row_str_opt(row, 19),
+                "acct_standard": row_str_opt(row, 20),
+                "extraction_method": row_str_opt(row, 21),
+                "text_layer": row_f64_opt(row, 22).map(|v| v == 1.0),
+                "identity_ok": row_f64_opt(row, 23).map(|v| v == 1.0),
+                "uploaded_at": row_str_opt(row, 24),
             })
         })
         .collect()
@@ -2668,6 +2703,115 @@ fn pick_consistent_pl_bs(financials: &[Value]) -> (Option<&Value>, Option<&Value
 
 /// 財務DL列の相対パスを介護情報公表システムの絶対URLに変換する
 /// （例: /upload/jigyosyofile/... → https://www.kaigokensaku.mhlw.go.jp/upload/...）
+/// 決算書URLからアップロード時刻(Unix秒)を取り出すSQL断片。
+/// URLは `.../1.pdf?1738223780` の形。クエリ文字列が無い行は 0 になる。
+const PL_UPLOAD_TS: &str = "CAST(NULLIF(substr(\"財務DL_事業活動計算書\", \
+     instr(\"財務DL_事業活動計算書\", '?') + 1), '') AS INTEGER)";
+
+/// 決算書の開示状況フィルタ。営業リストやDD対象の抽出に使う。
+///
+/// 索引は効かない（文字列関数を通すため）。223,103行の全表スキャンになるが、
+/// リスト生成は対話的なダッシュボードではないので許容する。
+fn financial_status_condition(status: Option<&str>) -> Option<String> {
+    let s = status?.trim();
+    if s.is_empty() {
+        return None;
+    }
+    let has_pl = "COALESCE(\"財務DL_事業活動計算書\",'') != ''";
+    match s {
+        // 3つとも出していない
+        "none" => Some(
+            "COALESCE(\"財務DL_事業活動計算書\",'') = '' \
+             AND COALESCE(\"財務DL_貸借対照表\",'') = '' \
+             AND COALESCE(\"財務DL_資金収支計算書\",'') = ''"
+                .to_string(),
+        ),
+        // 出してはいるが1年以上更新されていない。
+        // 2年（stale2y）は現時点で0件（公表システム上の最古の掲載が2024-10-28のため）
+        "stale" => Some(format!(
+            "{has_pl} AND {PL_UPLOAD_TS} > 1600000000 \
+             AND {PL_UPLOAD_TS} < strftime('%s','now') - 365*86400"
+        )),
+        "stale2y" => Some(format!(
+            "{has_pl} AND {PL_UPLOAD_TS} > 1600000000 \
+             AND {PL_UPLOAD_TS} < strftime('%s','now') - 730*86400"
+        )),
+        "fresh" => Some(format!(
+            "{has_pl} AND {PL_UPLOAD_TS} >= strftime('%s','now') - 365*86400"
+        )),
+        "full" => Some(
+            "COALESCE(\"財務DL_事業活動計算書\",'') != '' \
+             AND COALESCE(\"財務DL_貸借対照表\",'') != '' \
+             AND COALESCE(\"財務DL_資金収支計算書\",'') != ''"
+                .to_string(),
+        ),
+        _ => None,
+    }
+}
+
+/// 決算書URLの末尾 `?1738223780` はアップロード時刻のUnix秒。
+/// 実測（2026-08-12）で財務リンク353,738件すべてに入っているため、
+/// 「決算書がいつ出されたか」は100%機械的に取れる数少ない財務系の値になる。
+fn uploaded_at_from_url(path: &Option<String>) -> Option<String> {
+    let p = path.as_ref()?;
+    let q = p.rsplit_once('?')?.1;
+    let ts: i64 = q.parse().ok()?;
+    if ts < 1_600_000_000 || ts > 4_000_000_000 {
+        return None;
+    }
+    chrono::DateTime::from_timestamp(ts, 0).map(|d| d.format("%Y-%m-%d").to_string())
+}
+
+fn has_doc(path: &Option<String>) -> bool {
+    path.as_ref().map(|s| !s.trim().is_empty()).unwrap_or(false)
+}
+
+/// 決算書の開示状況。金額の中身と違い、ここは全施設で機械的に確定する
+fn build_disclosure(
+    pl: &Option<String>,
+    cf: &Option<String>,
+    bs: &Option<String>,
+) -> serde_json::Value {
+    let (h_pl, h_cf, h_bs) = (has_doc(pl), has_doc(cf), has_doc(bs));
+    let count = [h_pl, h_cf, h_bs].iter().filter(|b| **b).count();
+    // 会計ソフトから直接出したCSVを上げている事業者がいる（実測3,758リンク）
+    let is_csv = [pl, cf, bs]
+        .iter()
+        .any(|p| p.as_ref().map(|s| s.contains(".csv")).unwrap_or(false));
+    let uploaded: Vec<String> = [pl, cf, bs]
+        .iter()
+        .filter_map(|p| uploaded_at_from_url(p))
+        .collect();
+    let latest = uploaded.iter().max().cloned();
+    let days_since = latest.as_ref().and_then(|d| {
+        chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d")
+            .ok()
+            .map(|nd| (chrono::Utc::now().date_naive() - nd).num_days())
+    });
+    // 書類が1つも無いときは "" ではなく null を返す（画面側で分岐させるため）
+    let file_format: Option<&str> = if is_csv {
+        Some("csv")
+    } else if count > 0 {
+        Some("pdf")
+    } else {
+        None
+    };
+
+    json!({
+        "has_pl": h_pl,
+        "has_cf": h_cf,
+        "has_bs": h_bs,
+        "doc_count": count,
+        "is_full_set": count == 3,
+        "file_format": file_format,
+        "uploaded_at_pl": uploaded_at_from_url(pl),
+        "uploaded_at_cf": uploaded_at_from_url(cf),
+        "uploaded_at_bs": uploaded_at_from_url(bs),
+        "latest_upload": latest,
+        "days_since_upload": days_since,
+    })
+}
+
 fn to_kaigokensaku_url(path: Option<String>) -> Option<String> {
     let path = path?;
     let trimmed = path.trim();

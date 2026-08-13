@@ -66,11 +66,80 @@ function MetricCell({ label, value, sub }: { label: string; value: string; sub?:
   );
 }
 
+/** 数値の読み方を左右する来歴を小さく添える */
+function Provenance({ pl, bs }: { pl?: FinancialRecord; bs?: FinancialRecord }) {
+  const src = pl ?? bs;
+  if (!src) return null;
+
+  const tags: { text: string; cls: string }[] = [];
+
+  if (src.fiscal_year) {
+    tags.push({ text: `${src.fiscal_year}年度`, cls: "text-gray-500 border-gray-200 bg-white" });
+  } else {
+    tags.push({ text: "会計期間 不明", cls: "text-amber-600 border-amber-200 bg-amber-50" });
+  }
+
+  if (src.scope) {
+    tags.push({ text: src.scope, cls: "text-gray-500 border-gray-200 bg-white" });
+  } else {
+    // 法人全体か1拠点かで金額の意味が変わる。分からないなら分からないと出す
+    tags.push({ text: "法人/拠点の別 不明", cls: "text-amber-600 border-amber-200 bg-amber-50" });
+  }
+
+  if (src.unit) {
+    const inferred = src.unit_source && src.unit_source !== "pdf";
+    tags.push({
+      text: inferred ? `単位 ${src.unit}（推定）` : `単位 ${src.unit}`,
+      cls: inferred
+        ? "text-amber-600 border-amber-200 bg-amber-50"
+        : "text-gray-500 border-gray-200 bg-white",
+    });
+  }
+
+  // 資産 = 負債 + 純資産。ここが合わないなら抽出値のどれかが間違っている
+  if (bs?.identity_ok === true) {
+    tags.push({ text: "検算OK（資産=負債+純資産）", cls: "text-emerald-600 border-emerald-200 bg-emerald-50" });
+  } else if (bs?.identity_ok === false) {
+    tags.push({ text: "検算NG（要確認）", cls: "text-red-500 border-red-200 bg-red-50" });
+  }
+
+  if (src.extraction_method) {
+    tags.push({
+      text: src.extraction_method === "rule_v1" ? "規則抽出" : "AI抽出",
+      cls: "text-gray-400 border-gray-200 bg-white",
+    });
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1 mt-2">
+      {tags.map((t) => (
+        <span key={t.text} className={`text-[10px] px-1.5 py-0.5 rounded border ${t.cls}`}>
+          {t.text}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 export default function FinancialSummaryCard({ records, subtitle }: FinancialSummaryCardProps) {
   const pl = records.find((r) => r.doc_type === "PL");
   const bs = records.find((r) => r.doc_type === "BS");
 
   if (!pl && !bs) return null;
+
+  // レコードがあっても金額が全部nullなケースが多数ある（スキャン画像・自由書式）。
+  // そのまま描くと「-」だけのカードになり、壊れて見える。呼び出し側で理由を出す
+  const hasAnyValue = [pl, bs].some(
+    (r) =>
+      r != null &&
+      (r.revenue != null ||
+        r.operating_income != null ||
+        r.ordinary_income != null ||
+        r.net_income != null ||
+        r.total_assets != null ||
+        r.net_assets != null)
+  );
+  if (!hasAnyValue) return null;
 
   // 人件費率
   const personnelRatio =
@@ -128,6 +197,9 @@ export default function FinancialSummaryCard({ records, subtitle }: FinancialSum
           </>
         )}
       </div>
+
+      {/* 来歴。決算書は自由書式なので、単位・集計単位・年度が分からないと数字を誤読する */}
+      <Provenance pl={pl} bs={bs} />
 
       {(pl?.notes || bs?.notes) && (
         <p className="text-[11px] text-gray-400 mt-2">{pl?.notes ?? bs?.notes}</p>
