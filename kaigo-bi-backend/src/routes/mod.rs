@@ -29,6 +29,7 @@ use axum::{middleware, Router};
 use libsql::Database;
 use std::sync::Arc;
 
+use crate::auth::access_log_middleware::access_log_middleware;
 use crate::auth::middleware::auth_middleware;
 use crate::auth::plan::require_plan;
 use crate::services::cache_store::CacheStore;
@@ -113,11 +114,15 @@ pub fn create_router(state: SharedState) -> Router {
         .layer(middleware::from_fn(auth_middleware));
 
     // 認証必須のデータルート（内側でプラン別ゲートが効く）
+    //
+    // access_log は auth の内側に置く。外側だと Claims がまだ入っておらず
+    // 「誰が叩いたか」が記録できない（層は後に書いたものが外側）。
     let protected_data_routes = Router::new()
         .merge(free_routes)
         .merge(standard_routes)
         .merge(pro_routes)
         .merge(ma_routes)
+        .layer(middleware::from_fn(access_log_middleware))
         .layer(middleware::from_fn(auth_middleware));
 
     // admin専用ルート（認証ミドルウェア適用）

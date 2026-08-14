@@ -72,6 +72,11 @@ async fn main() {
         external_db,
     });
 
+    // APIアクセスログの定期フラッシュを開始（テーブル作成も兼ねる）。
+    // リクエストごとに書くとTursoへの往復がレスポンスに乗るため、
+    // メモリに溜めて10秒ごとにまとめて流す
+    crate::services::access_log::spawn_flusher(state.db.clone());
+
     // CORS設定（ALLOWED_ORIGINSが設定されていればそのオリジンのみ許可、未設定なら全オリジン許可）
     let cors = if let Ok(origins) = std::env::var("ALLOWED_ORIGINS") {
         let origin_values: Vec<HeaderValue> = origins

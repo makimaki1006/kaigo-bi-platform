@@ -3,8 +3,8 @@
 //
 // 注意:
 //  - 記載内容は実装（users / sessions / audit_logs / export_logs /
-//    password_reset_tokens テーブル、Stripe、Resend、Turso、Render、
-//    OpenStreetMap、Google Fonts）の実態に基づく。
+//    api_access_logs / password_reset_tokens テーブル、Stripe、Resend、
+//    Turso、Render、OpenStreetMap、Google Fonts）の実態に基づく。
 //  - 施行前に弁護士等の専門家によるレビューが必要。
 //  - 事業者名・連絡先は src/lib/legal.ts の OPERATOR を差し替えること。
 //  - 実装を変更して収集項目や外部送信先が変わったら、本ページも更新すること。
@@ -44,6 +44,13 @@ const COLLECTED: { category: string; items: string; purpose: string }[] = [
     category: "出力ログ",
     items: "出力した行数、日時",
     purpose: "プランごとの利用上限の管理",
+  },
+  {
+    category: "APIアクセスログ",
+    items:
+      "リクエストしたURL・パラメータ、応答の状態と大きさ、処理時間、IPアドレス、ブラウザ情報、日時",
+    purpose:
+      "不正な大量取得・自動収集の検知、障害調査、性能改善",
   },
   {
     category: "パスワード再設定情報",
@@ -193,7 +200,7 @@ export default function PrivacyPage() {
         <ul className="mt-3 list-disc space-y-1.5 pl-5 text-sm text-gray-700">
           <li>アカウント情報: 退会の申出を受けてから合理的な期間内に削除します</li>
           <li>セッション情報・パスワード再設定情報: 有効期限の経過後に無効化します</li>
-          <li>操作ログ・出力ログ: 不正利用の調査および利用上限の管理に必要な期間保存します</li>
+          <li>操作ログ・出力ログ・APIアクセスログ: 不正利用の調査および利用上限の管理に必要な期間保存します</li>
           <li>法令により保存が義務づけられる情報: 当該法令に定める期間</li>
         </ul>
 
@@ -203,7 +210,7 @@ export default function PrivacyPage() {
           <li>パスワードおよび各種トークンはハッシュ化して保存し、平文では保持しません</li>
           <li>通信は TLS により暗号化します</li>
           <li>権限に応じて閲覧・操作できる機能を制限します</li>
-          <li>操作ログを記録し、不正利用の検知に用います</li>
+          <li>操作ログおよびAPIアクセスログを記録し、不正利用・大量取得の検知に用います</li>
         </ul>
 
         {/* 7 */}

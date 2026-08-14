@@ -1994,7 +1994,10 @@ pub async fn search_facilities(db: &Database, params: &SearchParams) -> Result<V
 
     let where_clause = w.to_where_clause();
     let page = params.page.unwrap_or(1).max(1);
-    let per_page = params.per_page.unwrap_or(50).min(500).max(1);
+    // 上限を500から100に下げた。223,103施設を全件取りにいくコストが5倍になる
+    // （447リクエスト → 2,232リクエスト）。画面のページ送りは50件なので影響なし。
+    // 大量に必要な利用者はCSVエクスポート（月間上限つき）を使う導線にする。
+    let per_page = params.per_page.unwrap_or(50).min(100).max(1);
     let offset = (page - 1) * per_page;
 
     // ソートカラムのマッピング（ホワイトリスト方式 - インジェクション不可）
