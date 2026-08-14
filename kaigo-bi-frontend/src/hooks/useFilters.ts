@@ -51,7 +51,14 @@ export function useFilters() {
   const setFilters = useCallback(
     (newFilters: Partial<FilterState>) => {
       const merged = { ...filters, ...newFilters };
-      const params = new URLSearchParams();
+      // このフックが管理しないパラメータ（ページ固有の絞り込み等）は残す。
+      // 空のURLSearchParamsから作り直すと、例えば施設マスタの
+      // ?financial_status=none がフィルタ操作のたびに消えて共有できなくなる
+      const params = new URLSearchParams(searchParams.toString());
+      for (const k of ["prefectures", "serviceCodes", "corpTypes",
+                       "employeeMin", "employeeMax", "keyword"]) {
+        params.delete(k);
+      }
 
       if (merged.prefectures.length > 0) {
         params.set("prefectures", merged.prefectures.join(","));
@@ -75,7 +82,7 @@ export function useFilters() {
       const queryString = params.toString();
       router.push(queryString ? `${pathname}?${queryString}` : pathname);
     },
-    [filters, pathname, router]
+    [filters, pathname, router, searchParams]
   );
 
   // フィルタリセット

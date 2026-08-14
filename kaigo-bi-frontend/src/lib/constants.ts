@@ -192,6 +192,7 @@ export const NAV_ITEMS: NavItem[] = [
   { label: "成長性分析", href: "/growth", group: "M&A", minPlan: "standard" },
   { label: "財務健全度", href: "/financial-health", group: "M&A", minPlan: "standard" },
   { label: "決算書の開示状況", href: "/financial-disclosure", group: "M&A", minPlan: "standard" },
+  { label: "決算データ分析", href: "/financial-insights", group: "M&A", minPlan: "standard" },
   { label: "サービスポートフォリオ", href: "/service-portfolio", group: "M&A", minPlan: "standard" },
   { label: "M&Aスクリーニング", href: "/ma-screening", group: "M&A", minPlan: "ma" },
   { label: "DD支援", href: "/due-diligence", group: "M&A", minPlan: "ma" },

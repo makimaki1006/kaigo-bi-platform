@@ -15,7 +15,7 @@ interface KpiCardProps {
   /** 数値 */
   value: number | null | undefined;
   /** フォーマット種別 */
-  format?: "number" | "percent" | "decimal";
+  format?: "number" | "percent" | "percentRaw" | "decimal";
   /** アイコン（ReactNode: Lucideアイコン等） */
   icon?: ReactNode;
   /** サブテキスト（補足情報） */

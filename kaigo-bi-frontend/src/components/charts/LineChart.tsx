@@ -83,10 +83,21 @@ interface LineChartProps {
   unit?: string;
 }
 
-/** Y軸の千区切りフォーマッター */
+/** Y軸の目盛りフォーマッター
+ *
+ * 以前は toFixed(0) で丸めていたため、22,500 と 15,000 がどちらも「2万」になり
+ * 目盛りに同じラベルが並んでいた。端数があるときだけ小数第1位まで出す。
+ * 単位も「K」ではなく「千」に揃える（日本語UIでKだけ英字だと浮く）。
+ */
 function yAxisFormatter(value: number): string {
-  if (value >= 10000) return `${(value / 10000).toFixed(0)}万`;
-  if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
+  if (value >= 10000) {
+    const v = value / 10000;
+    return `${Number.isInteger(v) ? v : v.toFixed(1)}万`;
+  }
+  if (value >= 1000) {
+    const v = value / 1000;
+    return `${Number.isInteger(v) ? v : v.toFixed(1)}千`;
+  }
   return value.toLocaleString("ja-JP");
 }
 

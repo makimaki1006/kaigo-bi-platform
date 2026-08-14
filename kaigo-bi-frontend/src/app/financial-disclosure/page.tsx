@@ -137,29 +137,29 @@ function FinancialDisclosureContent() {
 
       <KpiCardGrid>
         <KpiCard
-          label="決算書を掲載している施設"
+          label="決算書の掲載率"
           value={kpi?.with_any_rate ?? null}
-          format="percent"
+          format="percentRaw"
           icon={IconDoc}
           subtitle={kpi ? `${kpi.with_any.toLocaleString()} / ${kpi.facilities.toLocaleString()} 施設` : undefined}
           loading={kpiLoading}
           accentColor="bg-indigo-500"
         />
         <KpiCard
-          label="3点セットが揃っている"
+          label="3点セット充足率"
           value={kpi?.full_set_rate ?? null}
-          format="percent"
+          format="percentRaw"
           icon={IconFullSet}
-          subtitle={kpi ? `${kpi.full_set.toLocaleString()} 施設（PL+BS+CF）` : undefined}
+          subtitle={kpi ? `${kpi.full_set.toLocaleString()} 施設 PL+BS+CF` : undefined}
           loading={kpiLoading}
           accentColor="bg-emerald-500"
         />
         <KpiCard
-          label="直近1年以内に更新"
+          label="直近1年に更新"
           value={kpi?.fresh_within_1y_rate ?? null}
-          format="percent"
+          format="percentRaw"
           icon={IconClock}
-          subtitle={kpi ? `最新 ${kpi.latest_upload ?? "-"} / 最古 ${kpi.oldest_upload ?? "-"}` : undefined}
+          subtitle={kpi ? `最新 ${kpi.latest_upload ?? "-"}` : undefined}
           loading={kpiLoading}
           accentColor="bg-sky-500"
         />
@@ -248,8 +248,7 @@ function FinancialDisclosureContent() {
         </section>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <ChartCard
+      <ChartCard
           title="法人種別ごとの開示率"
           subtitle="決算書（事業活動計算書）を掲載している施設の割合"
           loading={corpLoading}
@@ -261,6 +260,7 @@ function FinancialDisclosureContent() {
               yKey="rate"
               horizontal
               unit="%"
+              yAxisWidth={170}
               height={320}
               tooltipFormatter={(v) => `${v}%`}
             />
@@ -275,12 +275,11 @@ function FinancialDisclosureContent() {
           loading={acctLoading}
         >
           {acctChart.length > 0 ? (
-            <DonutChart data={acctChart} nameKey="name" valueKey="value" height={320} unit="施設" />
+            <DonutChart data={acctChart} nameKey="name" valueKey="value" height={400} unit="施設" />
           ) : (
             <EmptyBox loading={acctLoading} />
           )}
         </ChartCard>
-      </div>
 
       <ChartCard
         title="決算書がアップロードされた月"
@@ -443,7 +442,7 @@ function MetricStat({
       <p className="text-[11px] text-gray-500">{label}</p>
       {stat.published && stat.median != null ? (
         <>
-          <p className="text-xl font-bold text-gray-900 tabular-nums mt-0.5">{stat.median}%</p>
+          <p className="text-xl font-bold text-gray-900 tabular-nums mt-0.5">{stat.median.toFixed(1)}%</p>
           {stat.quartiles && (
             <p className="text-[11px] text-gray-400 mt-0.5">
               四分位 {stat.quartiles.p25}% / {stat.quartiles.p50}% / {stat.quartiles.p75}%

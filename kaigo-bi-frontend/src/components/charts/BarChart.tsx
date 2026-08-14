@@ -67,12 +67,23 @@ interface BarChartProps {
   unit?: string;
   /** バークリック時のコールバック */
   onBarClick?: (data: ChartDataPoint) => void;
+  /** 横棒のときのY軸（ラベル）の幅。長いラベルを切らせたくない場合に広げる */
+  yAxisWidth?: number;
 }
 
-/** Y軸の千区切りフォーマッター */
+/** 数値軸の目盛りフォーマッター
+ * 端数があるときだけ小数第1位まで出す。toFixed(0)だと 22,500 と 15,000 が
+ * どちらも「2万」になり、目盛りに同じラベルが並ぶ。
+ */
 function yAxisFormatter(value: number): string {
-  if (value >= 10000) return `${(value / 10000).toFixed(0)}万`;
-  if (value >= 1000) return `${(value / 1000).toFixed(0)}K`;
+  if (value >= 10000) {
+    const v = value / 10000;
+    return `${Number.isInteger(v) ? v : v.toFixed(1)}万`;
+  }
+  if (value >= 1000) {
+    const v = value / 1000;
+    return `${Number.isInteger(v) ? v : v.toFixed(1)}千`;
+  }
   return value.toLocaleString("ja-JP");
 }
 
@@ -87,6 +98,7 @@ export default function BarChart({
   gradient = true,
   unit,
   onBarClick,
+  yAxisWidth = 120,
 }: BarChartProps) {
   if (!data || data.length === 0) {
     return (
@@ -113,7 +125,7 @@ export default function BarChart({
         <RechartsBarChart
           data={data}
           layout="vertical"
-          margin={{ top: 5, right: 30, left: 120, bottom: 5 }}
+          margin={{ top: 5, right: 30, left: yAxisWidth, bottom: 5 }}
         >
           <defs>
             <linearGradient id={gradientId} x1="0" y1="0" x2="1" y2="0">
@@ -135,8 +147,12 @@ export default function BarChart({
             type="category"
             dataKey={xKey}
             tick={{ fontSize: 11, fill: "#374151" }}
-            width={120}
-            tickFormatter={(v: string) => v.length > 12 ? v.slice(0, 12) + "..." : v}
+            width={yAxisWidth}
+            // 軸幅に収まる文字数で切る。幅を広げたときに無駄に「...」が付かないよう連動させる
+            tickFormatter={(v: string) => {
+              const max = Math.max(6, Math.floor(yAxisWidth / 11));
+              return v.length > max ? v.slice(0, max) + "…" : v;
+            }}
           />
           <Tooltip
             content={

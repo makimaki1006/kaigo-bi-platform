@@ -63,13 +63,17 @@ export function formatDecimal(
  */
 export function formatKpiValue(
   value: number | null | undefined,
-  format: "number" | "percent" | "decimal"
+  format: "number" | "percent" | "percentRaw" | "decimal"
 ): string {
   switch (format) {
     case "number":
       return formatNumber(value);
+    // percent は比率(0.671)を受け取って100倍する。
+    // APIが既に67.1で返す場合は percentRaw を使う（でないと6710.0%になる）
     case "percent":
       return formatPercent(value);
+    case "percentRaw":
+      return formatPercentRaw(value);
     case "decimal":
       return formatDecimal(value);
     default:

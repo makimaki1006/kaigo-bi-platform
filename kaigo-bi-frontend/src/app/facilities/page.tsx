@@ -7,7 +7,7 @@
 // ===================================================
 
 import { Suspense, useState, useCallback, useEffect, useRef } from "react";
-import { useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 // TextInput は Tremor の HeadlessUI v2 互換問題があるため HTML input を使用
 import { useApi } from "@/hooks/useApi";
 import { useFilters } from "@/hooks/useFilters";
@@ -58,6 +58,8 @@ const FINANCIAL_STATUS_OPTIONS = [
 function FacilitiesContent() {
   const { filters, setFilters, toApiParams } = useFilters();
   const urlParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
 
   // 決算書フィルタ（?financial_status=none で初期選択される）
   const [financialStatus, setFinancialStatus] = useState(
@@ -166,8 +168,15 @@ function FacilitiesContent() {
           className="px-3 py-2 text-sm border border-gray-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-brand-500"
           value={financialStatus}
           onChange={(e) => {
-            setFinancialStatus(e.target.value);
+            const v = e.target.value;
+            setFinancialStatus(v);
             setPage(1);
+            // URLにも反映して、絞り込んだ状態を共有・再読込できるようにする
+            const p = new URLSearchParams(urlParams.toString());
+            if (v) p.set("financial_status", v);
+            else p.delete("financial_status");
+            const qs = p.toString();
+            router.replace(qs ? `${pathname}?${qs}` : pathname);
           }}
           aria-label="決算書の開示状況で絞り込む"
         >

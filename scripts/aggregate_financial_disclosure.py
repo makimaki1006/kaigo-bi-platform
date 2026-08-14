@@ -67,7 +67,7 @@ def main():
     entries = []
 
     # ---------------------------------------------------------------
-    logger.info("[1/7] 全国KPI")
+    logger.info("[1/8] 全国KPI")
     r = q(f"""
       SELECT COUNT(*) n, COUNT(DISTINCT jigyosho) n_jigyosho,
              COUNT(DISTINCT NULLIF(corp_number,'')) n_corp,
@@ -100,7 +100,7 @@ def main():
     entries.append(("financial_disclosure_kpi", kpi, n))
 
     # ---------------------------------------------------------------
-    logger.info("[2/7] 都道府県別")
+    logger.info("[2/8] 都道府県別")
     rows = q(f"""
       SELECT prefecture, COUNT(*) n, SUM(has_pl) pl, SUM(has_pl*has_bs*has_cf) full3,
              SUM(CASE WHEN {TS_OK} AND ts > strftime('%s','now') - 365*86400
@@ -115,7 +115,7 @@ def main():
     entries.append(("financial_disclosure_by_prefecture", pref, len(pref)))
 
     # ---------------------------------------------------------------
-    logger.info("[3/7] 法人種別別")
+    logger.info("[3/8] 法人種別別")
     rows = q("""
       SELECT corp_type, COUNT(*) n, SUM(has_pl) pl, SUM(has_bs) bs, SUM(has_cf) cf,
              SUM(has_pl*has_bs*has_cf) full3, SUM(is_csv) csv_cnt
@@ -128,7 +128,7 @@ def main():
     entries.append(("financial_disclosure_by_corp_type", corp, len(corp)))
 
     # ---------------------------------------------------------------
-    logger.info("[4/7] サービス種別別")
+    logger.info("[4/8] サービス種別別")
     rows = q("""
       SELECT service, COUNT(*) n, SUM(has_pl) pl, SUM(has_pl*has_bs*has_cf) full3
       FROM d WHERE service IS NOT NULL AND service != ''
@@ -139,7 +139,7 @@ def main():
     entries.append(("financial_disclosure_by_service", svc, len(svc)))
 
     # ---------------------------------------------------------------
-    logger.info("[5/7] 開示鮮度（アップロード年月）")
+    logger.info("[5/8] 開示鮮度（アップロード年月）")
     rows = q(f"""
       SELECT strftime('%Y-%m', ts, 'unixepoch') ym, COUNT(*) n
       FROM d WHERE {TS_OK} GROUP BY ym ORDER BY ym""")
@@ -147,7 +147,7 @@ def main():
     entries.append(("financial_disclosure_freshness", fresh, len(fresh)))
 
     # ---------------------------------------------------------------
-    logger.info("[6/7] 会計種類別")
+    logger.info("[6/8] 会計種類別")
     rows = q("""
       SELECT acct, COUNT(*) n, SUM(has_pl) pl
       FROM d GROUP BY acct HAVING n >= 50 ORDER BY n DESC""")

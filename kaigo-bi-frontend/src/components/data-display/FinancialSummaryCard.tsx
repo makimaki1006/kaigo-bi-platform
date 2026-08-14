@@ -105,7 +105,9 @@ function Provenance({ pl, bs }: { pl?: FinancialRecord; bs?: FinancialRecord }) 
 
   if (src.extraction_method) {
     tags.push({
-      text: src.extraction_method === "rule_v1" ? "規則抽出" : "AI抽出",
+      // rule_v1 / rule_v2 / rule_v3 ... と版が上がるので前方一致で見る。
+      // ここを固定文字列で比較していたため rule_v3 が「AI抽出」と出ていた
+      text: src.extraction_method.startsWith("rule") ? "規則抽出" : "AI抽出",
       cls: "text-gray-400 border-gray-200 bg-white",
     });
   }
@@ -158,7 +160,7 @@ export default function FinancialSummaryCard({ records, subtitle }: FinancialSum
         <h4 className="text-sm font-semibold text-gray-800 flex items-center gap-2">
           財務サマリー
           <span className="text-[10px] font-normal text-indigo-500 bg-indigo-50 border border-indigo-200 rounded px-1.5 py-0.5">
-            決算PDF AI抽出
+            決算PDFから抽出
           </span>
           {subtitle && <span className="text-xs font-normal text-gray-500">{subtitle}</span>}
         </h4>

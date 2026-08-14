@@ -831,6 +831,49 @@ export interface FinancialMetricsSummary {
   min_n: number;
 }
 
+// ---- 決算データ × 公表データ のクロス集計 ----
+
+/** 職員1人あたり収益（万円/人・年） */
+export interface FinancialRevenuePerStaff {
+  unit: string;
+  n: number;
+  median: number | null;
+  quartiles: { p25: number; p50: number; p75: number } | null;
+  scope_note: string;
+  by_service: { service: string; n: number; median: number }[];
+  by_corp_type: { corp_type: string; n: number; median: number }[];
+  min_n: number;
+}
+
+/** 自己資本比率 × 法人の事業所数 */
+export interface FinancialEquityByCorpSize {
+  band: string;
+  n: number;
+  median: number;
+  quartiles: { p25: number; p50: number; p75: number } | null;
+}
+
+/** 決算書の開示有無 × 品質スコア・離職率 */
+export interface FinancialDisclosureVsQuality {
+  rows: {
+    disclosed: boolean;
+    facilities: number;
+    quality_score_avg: number | null;
+    quality_n: number;
+    turnover_avg: number | null;
+    turnover_n: number;
+    staff_avg: number | null;
+  }[];
+  note: string;
+}
+
+/** 都道府県別の人件費率 */
+export interface FinancialPersonnelRatioByPrefecture {
+  prefecture: string;
+  n: number;
+  median: number;
+}
+
 export interface FinancialMetricsByCorpType {
   corp_type: string;
   personnel_n: number;

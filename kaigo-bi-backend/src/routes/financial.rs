@@ -27,6 +27,12 @@ pub fn router() -> Router<SharedState> {
         .route("/api/financial/extraction-status", get(extraction_status))
         .route("/api/financial/metrics/summary", get(metrics_summary))
         .route("/api/financial/metrics/by-corp-type", get(metrics_by_corp_type))
+        // 決算データ × 公表データ のクロス集計（scripts/fin_explore.py で信号を確認したもの）
+        .route("/api/financial/insights/revenue-per-staff", get(revenue_per_staff))
+        .route("/api/financial/insights/equity-by-corp-size", get(equity_by_corp_size))
+        .route("/api/financial/insights/disclosure-vs-quality", get(disclosure_vs_quality))
+        .route("/api/financial/insights/personnel-ratio-by-prefecture",
+               get(personnel_ratio_by_prefecture))
 }
 
 /// kpi_cache から取り出す。未集計なら 503 ではなく空を返して画面を壊さない
@@ -82,4 +88,26 @@ async fn metrics_summary(State(state): State<SharedState>) -> Result<Json<Value>
 
 async fn metrics_by_corp_type(State(state): State<SharedState>) -> Result<Json<Value>, AppError> {
     Ok(cached(&state, "financial_metrics_by_corp_type"))
+}
+
+/// 職員1人あたり収益。集計単位が確定する施設（単一事業所・単一サービスの法人）に限る
+async fn revenue_per_staff(State(state): State<SharedState>) -> Result<Json<Value>, AppError> {
+    Ok(cached(&state, "financial_revenue_per_staff"))
+}
+
+/// 自己資本比率 × 法人の事業所数
+async fn equity_by_corp_size(State(state): State<SharedState>) -> Result<Json<Value>, AppError> {
+    Ok(cached(&state, "financial_equity_by_corp_size"))
+}
+
+/// 決算書の開示有無 × 品質スコア・離職率
+async fn disclosure_vs_quality(State(state): State<SharedState>) -> Result<Json<Value>, AppError> {
+    Ok(cached(&state, "financial_disclosure_vs_quality"))
+}
+
+/// 都道府県別の人件費率
+async fn personnel_ratio_by_prefecture(
+    State(state): State<SharedState>,
+) -> Result<Json<Value>, AppError> {
+    Ok(cached(&state, "financial_personnel_ratio_by_prefecture"))
 }
