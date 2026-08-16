@@ -15,6 +15,8 @@ export interface ApiErrorInfo {
   isNetworkError: boolean;
   isAuthError: boolean;
   isServerError: boolean;
+  /** 429: 短時間に大量アクセスして制限された */
+  isRateLimited: boolean;
 }
 
 /**
@@ -28,6 +30,7 @@ function parseApiError(error: unknown): ApiErrorInfo {
       isNetworkError: false,
       isAuthError: error.status === 401 || error.status === 403,
       isServerError: error.status >= 500,
+      isRateLimited: error.status === 429,
     };
   }
 
@@ -39,6 +42,7 @@ function parseApiError(error: unknown): ApiErrorInfo {
       isNetworkError: true,
       isAuthError: false,
       isServerError: false,
+      isRateLimited: false,
     };
   }
 
@@ -48,6 +52,7 @@ function parseApiError(error: unknown): ApiErrorInfo {
     isNetworkError: false,
     isAuthError: false,
     isServerError: false,
+    isRateLimited: false,
   };
 }
 

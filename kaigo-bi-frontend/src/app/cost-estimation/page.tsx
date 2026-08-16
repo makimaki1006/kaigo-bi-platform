@@ -162,6 +162,7 @@ function CostEstimationContent() {
           isNetworkError: false,
           isAuthError: false,
           isServerError: false,
+          isRateLimited: false,
         });
       }
       setResult(null);
