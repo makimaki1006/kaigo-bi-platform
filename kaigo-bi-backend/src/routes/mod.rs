@@ -30,6 +30,7 @@ use libsql::Database;
 use std::sync::Arc;
 
 use crate::auth::access_log_middleware::access_log_middleware;
+use crate::auth::data_rate_limit::data_rate_limit_middleware;
 use crate::auth::middleware::auth_middleware;
 use crate::auth::plan::require_plan;
 use crate::services::cache_store::CacheStore;
@@ -122,6 +123,9 @@ pub fn create_router(state: SharedState) -> Router {
         .merge(standard_routes)
         .merge(pro_routes)
         .merge(ma_routes)
+        // 内側から: レート制限 → アクセスログ → 認証（層は後に書くほど外側）
+        // 制限で弾いた分もログに残るよう、access_log を rate_limit の外側に置く
+        .layer(middleware::from_fn(data_rate_limit_middleware))
         .layer(middleware::from_fn(access_log_middleware))
         .layer(middleware::from_fn(auth_middleware));
 

@@ -41,6 +41,44 @@ def main():
         return
 
     # ------------------------------------------------------------------
+    # 自動判定: 通常の画面利用から外れたアカウントを先頭に出す。
+    # 閾値は暫定。数日ログを溜めて正常水準が見えたら調整する。
+    print("\n--- ⚠ 要注意アカウント（自動判定） ---")
+    rows = query(f"""
+        SELECT email, user_id,
+               COUNT(*) reqs,
+               SUM(CASE WHEN response_bytes > 0 THEN response_bytes ELSE 0 END) bytes,
+               SUM(CASE WHEN status = 429 THEN 1 ELSE 0 END) blocked,
+               SUM(CASE WHEN path LIKE '%/facilities/search%' THEN 1 ELSE 0 END) searches,
+               COUNT(DISTINCT ip) ips
+        FROM api_access_logs WHERE created_at >= {since}
+        GROUP BY user_id
+    """, timeout=300)
+    flagged = []
+    for r in rows:
+        reqs, bytes_, blocked = int(r["reqs"]), int(r["bytes"] or 0), int(r["blocked"])
+        searches, ips = int(r["searches"]), int(r["ips"])
+        reasons = []
+        # 1日あたりの目安。通常の画面利用は1セッション数十〜数百リクエスト
+        if reqs / max(args.days, 1) > 500:
+            reasons.append(f"リクエスト過多({reqs:,})")
+        if bytes_ / 1024 / 1024 / max(args.days, 1) > 20:
+            reasons.append(f"取得量過多({mb(bytes_)})")
+        if blocked > 0:
+            reasons.append(f"レート制限に到達({blocked}回)")
+        if searches / max(args.days, 1) > 100:
+            reasons.append(f"検索連打({searches:,})")
+        if ips > 3:
+            reasons.append(f"IP分散({ips})")
+        if reasons:
+            flagged.append((r["email"] or r["user_id"], reasons))
+    if flagged:
+        for email, reasons in flagged:
+            print(f"  🔴 {str(email)[:30]:32s} {' / '.join(reasons)}")
+    else:
+        print("  なし（全アカウントが通常利用の範囲内）")
+
+    # ------------------------------------------------------------------
     print("\n--- アカウント別（取得バイト数の多い順） ---")
     rows = query(f"""
         SELECT user_id, email, plan,
